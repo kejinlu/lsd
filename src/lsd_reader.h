@@ -80,14 +80,14 @@ bool lsd_reader_find_heading(lsd_reader *reader,
  * Prefix search (get suggestion list)
  * @param reader LSD reader
  * @param prefix Prefix (UTF-8)
- * @param max_results Maximum number of results (0 means unlimited)
+ * @param limit Maximum number of results (0 means unlimited)
  * @param results Output entry array
  * @param result_count Output entry count
  * @return true on success
  */
 bool lsd_reader_prefix(lsd_reader *reader,
                                    const char *prefix,
-                                   size_t max_results,
+                                   size_t limit,
                                    lsd_heading **results,
                                    size_t *result_count);
 

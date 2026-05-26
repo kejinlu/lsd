@@ -514,7 +514,7 @@ bool lsd_reader_find_heading(lsd_reader *reader,
 
 bool lsd_reader_prefix(lsd_reader *reader,
                                    const char *prefix,
-                                   size_t max_results,
+                                   size_t limit,
                                    lsd_heading **results,
                                    size_t *result_count) {
     if (!reader || !prefix || !results || !result_count) return false;
@@ -536,7 +536,7 @@ bool lsd_reader_prefix(lsd_reader *reader,
     if (prefix_len == 0) { free(prefix_utf16); return false; }
 
     // Allocate results array
-    size_t capacity = max_results > 0 ? max_results : 64;
+    size_t capacity = limit > 0 ? limit : 64;
     lsd_heading *headings = calloc(capacity, sizeof(lsd_heading));
     if (!headings) {
         free(prefix_utf16);
@@ -567,7 +567,7 @@ bool lsd_reader_prefix(lsd_reader *reader,
     }
 
     // Iterate through leaf pages collecting matching headings
-    while (current_page < pages_count && (max_results == 0 || count < max_results)) {
+    while (current_page < pages_count && (limit == 0 || count < limit)) {
         lsd_leaf_page *leaf = lsd_page_store_get_leaf(reader->page_store, (uint16_t)current_page, NULL, 0);
         if (!leaf) break;
 
@@ -583,7 +583,7 @@ bool lsd_reader_prefix(lsd_reader *reader,
                 // Prefix match
                 found_any = true;
 
-                if (max_results > 0 && count >= max_results) break;
+                if (limit > 0 && count >= limit) break;
 
                 // Expand array if needed
                 if (count >= capacity) {
