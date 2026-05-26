@@ -44,7 +44,9 @@ static const char *lsd_path(const char *filename) {
 // ============================================================
 
 static lsd_reader *open_assert(const char *filename) {
-    lsd_reader *r = lsd_reader_open(lsd_path(filename));
+    lsd_reader *r = NULL;
+    lsd_status st = lsd_reader_open(lsd_path(filename), &r);
+    TEST_ASSERT_EQUAL_MESSAGE(LSD_OK, st, filename);
     TEST_ASSERT_NOT_NULL_MESSAGE(r, filename);
     return r;
 }
@@ -54,11 +56,16 @@ static lsd_reader *open_assert(const char *filename) {
 // ============================================================
 
 void test_open_null_path(void) {
-    TEST_ASSERT_NULL(lsd_reader_open(NULL));
+    lsd_reader *r = NULL;
+    TEST_ASSERT_EQUAL(LSD_ERR_INVALID_PARAM, lsd_reader_open(NULL, &r));
+    TEST_ASSERT_NULL(r);
 }
 
 void test_open_nonexistent(void) {
-    TEST_ASSERT_NULL(lsd_reader_open("/tmp/nonexistent_lsd_file_12345.lsd"));
+    lsd_reader *r = NULL;
+    lsd_status st = lsd_reader_open("/tmp/nonexistent_lsd_file_12345.lsd", &r);
+    TEST_ASSERT_TRUE(st != LSD_OK);
+    TEST_ASSERT_NULL(r);
 }
 
 void test_close_null(void) {
@@ -84,7 +91,7 @@ void test_system14_open(void) {
 void test_system14_name(void) {
     lsd_reader *r = open_assert("system_14_activederu.lsd");
     char *name = NULL;
-    TEST_ASSERT_EQUAL(0, lsd_reader_get_name(r, &name));
+    TEST_ASSERT_EQUAL(LSD_OK, lsd_reader_get_name(r, &name));
     TEST_ASSERT_EQUAL_STRING("Active (De-Ru)", name);
     free(name);
     lsd_reader_close(r);
@@ -96,7 +103,8 @@ void test_system14_iter_first2(void) {
     TEST_ASSERT_NOT_NULL(it);
 
     // heading 1: 'rein
-    const lsd_heading *h = lsd_heading_iter_next(it);
+    const lsd_heading *h = NULL;
+    TEST_ASSERT_EQUAL(LSD_OK, lsd_heading_iter_next(it, &h));
     TEST_ASSERT_NOT_NULL(h);
     char *text = NULL;
     lsd_utf16_to_utf8(h->text, h->text_length, &text);
@@ -104,7 +112,7 @@ void test_system14_iter_first2(void) {
     free(text);
 
     // heading 2: Abend
-    h = lsd_heading_iter_next(it);
+    TEST_ASSERT_EQUAL(LSD_OK, lsd_heading_iter_next(it, &h));
     TEST_ASSERT_NOT_NULL(h);
     lsd_utf16_to_utf8(h->text, h->text_length, &text);
     TEST_ASSERT_EQUAL_STRING("Abend", text);
@@ -118,7 +126,7 @@ void test_system14_find_rein(void) {
     lsd_reader *r = open_assert("system_14_activederu.lsd");
     lsd_heading h;
     memset(&h, 0, sizeof(h));
-    TEST_ASSERT_TRUE(lsd_reader_find_heading(r, "'rein", &h));
+    TEST_ASSERT_EQUAL(LSD_OK, lsd_reader_find_heading(r, "'rein", &h));
     TEST_ASSERT_EQUAL_UINT32(0, h.reference);
     lsd_heading_destroy(&h);
     lsd_reader_close(r);
@@ -128,7 +136,7 @@ void test_system14_find_Abend(void) {
     lsd_reader *r = open_assert("system_14_activederu.lsd");
     lsd_heading h;
     memset(&h, 0, sizeof(h));
-    TEST_ASSERT_TRUE(lsd_reader_find_heading(r, "Abend", &h));
+    TEST_ASSERT_EQUAL(LSD_OK, lsd_reader_find_heading(r, "Abend", &h));
     TEST_ASSERT_EQUAL_UINT32(29, h.reference);
     lsd_heading_destroy(&h);
     lsd_reader_close(r);
@@ -137,7 +145,7 @@ void test_system14_find_Abend(void) {
 void test_system14_read_article_Abend(void) {
     lsd_reader *r = open_assert("system_14_activederu.lsd");
     char *article = NULL;
-    TEST_ASSERT_EQUAL(0, lsd_reader_read_article(r, 29, &article));
+    TEST_ASSERT_EQUAL(LSD_OK, lsd_reader_read_article(r, 29, &article));
     TEST_ASSERT_NOT_NULL(article);
     TEST_ASSERT_NOT_NULL(strstr(article, "[/trn]"));
     TEST_ASSERT_NOT_NULL(strstr(article, "вечер"));
@@ -149,7 +157,8 @@ void test_system14_iter_count(void) {
     lsd_reader *r = open_assert("system_14_activederu.lsd");
     lsd_heading_iter *it = lsd_heading_iter_create(r);
     int count = 0;
-    while (lsd_heading_iter_next(it)) count++;
+    const lsd_heading *h = NULL;
+    while (lsd_heading_iter_next(it, &h) == LSD_OK) count++;
     TEST_ASSERT_EQUAL_INT(1678, count);
     lsd_heading_iter_destroy(it);
     lsd_reader_close(r);
@@ -159,7 +168,7 @@ void test_system14_prefix(void) {
     lsd_reader *r = open_assert("system_14_activederu.lsd");
     lsd_heading *results = NULL;
     size_t count = 0;
-    TEST_ASSERT_TRUE(lsd_reader_prefix(r, "Ab", 0, &results, &count));
+    TEST_ASSERT_EQUAL(LSD_OK, lsd_reader_prefix(r, "Ab", 0, &results, &count));
     TEST_ASSERT_EQUAL_size_t(13, count);
     char *text = NULL;
     lsd_utf16_to_utf8(results[0].text, results[0].text_length, &text);
@@ -185,16 +194,16 @@ void test_system15_open(void) {
 void test_system15_iter_first2(void) {
     lsd_reader *r = open_assert("system_15_activederu.lsd");
     lsd_heading_iter *it = lsd_heading_iter_create(r);
-    const lsd_heading *h;
+    const lsd_heading *h = NULL;
 
-    h = lsd_heading_iter_next(it);
+    TEST_ASSERT_EQUAL(LSD_OK, lsd_heading_iter_next(it, &h));
     TEST_ASSERT_NOT_NULL(h);
     char *text = NULL;
     lsd_utf16_to_utf8(h->text, h->text_length, &text);
     TEST_ASSERT_EQUAL_STRING("'rein", text);
     free(text);
 
-    h = lsd_heading_iter_next(it);
+    TEST_ASSERT_EQUAL(LSD_OK, lsd_heading_iter_next(it, &h));
     TEST_ASSERT_NOT_NULL(h);
     lsd_utf16_to_utf8(h->text, h->text_length, &text);
     TEST_ASSERT_EQUAL_STRING("Abend", text);
@@ -209,8 +218,8 @@ void test_system15_find_Haus(void) {
     lsd_heading h1, h2;
     memset(&h1, 0, sizeof(h1));
     memset(&h2, 0, sizeof(h2));
-    TEST_ASSERT_TRUE(lsd_reader_find_heading(r, "Haus", &h1));
-    TEST_ASSERT_TRUE(lsd_reader_find_heading(r, "haus", &h2));
+    TEST_ASSERT_EQUAL(LSD_OK, lsd_reader_find_heading(r, "Haus", &h1));
+    TEST_ASSERT_EQUAL(LSD_OK, lsd_reader_find_heading(r, "haus", &h2));
     TEST_ASSERT_EQUAL_UINT32(h1.reference, h2.reference);
     lsd_heading_destroy(&h1);
     lsd_heading_destroy(&h2);
@@ -221,9 +230,9 @@ void test_system15_read_article_Haus(void) {
     lsd_reader *r = open_assert("system_15_activederu.lsd");
     lsd_heading h;
     memset(&h, 0, sizeof(h));
-    TEST_ASSERT_TRUE(lsd_reader_find_heading(r, "Haus", &h));
+    TEST_ASSERT_EQUAL(LSD_OK, lsd_reader_find_heading(r, "Haus", &h));
     char *article = NULL;
-    TEST_ASSERT_EQUAL(0, lsd_reader_read_article(r, h.reference, &article));
+    TEST_ASSERT_EQUAL(LSD_OK, lsd_reader_read_article(r, h.reference, &article));
     TEST_ASSERT_NOT_NULL(article);
     TEST_ASSERT_NOT_NULL(strstr(article, "[/trn]"));
     TEST_ASSERT_NOT_NULL(strstr(article, "дом"));
@@ -235,7 +244,7 @@ void test_system15_read_article_Haus(void) {
 void test_system15_annotation(void) {
     lsd_reader *r = open_assert("system_15_activederu.lsd");
     char *annotation = NULL;
-    TEST_ASSERT_EQUAL(0, lsd_reader_read_annotation(r, &annotation));
+    TEST_ASSERT_EQUAL(LSD_OK, lsd_reader_read_annotation(r, &annotation));
     TEST_ASSERT_NOT_NULL(annotation);
     TEST_ASSERT_NOT_NULL(strstr(annotation, "Russian"));
     TEST_ASSERT_NOT_NULL(strstr(annotation, "Active (De-Ru)"));
@@ -247,7 +256,7 @@ void test_system15_prefix(void) {
     lsd_reader *r = open_assert("system_15_activederu.lsd");
     lsd_heading *results = NULL;
     size_t count = 0;
-    TEST_ASSERT_TRUE(lsd_reader_prefix(r, "Ab", 0, &results, &count));
+    TEST_ASSERT_EQUAL(LSD_OK, lsd_reader_prefix(r, "Ab", 0, &results, &count));
     TEST_ASSERT_EQUAL_size_t(13, count);
     char *text = NULL;
     lsd_utf16_to_utf8(results[0].text, results[0].text_length, &text);
@@ -274,16 +283,16 @@ void test_user11_open(void) {
 void test_user11_iter_first2(void) {
     lsd_reader *r = open_assert("user_11_international_lighting_vocabulary_cie_publ_no_17.lsd");
     lsd_heading_iter *it = lsd_heading_iter_create(r);
-    const lsd_heading *h;
+    const lsd_heading *h = NULL;
     char *text = NULL;
 
-    h = lsd_heading_iter_next(it);
+    TEST_ASSERT_EQUAL(LSD_OK, lsd_heading_iter_next(it, &h));
     TEST_ASSERT_NOT_NULL(h);
     lsd_utf16_to_utf8(h->text, h->text_length, &text);
     TEST_ASSERT_EQUAL_STRING("Abbey's law", text);
     free(text);
 
-    h = lsd_heading_iter_next(it);
+    TEST_ASSERT_EQUAL(LSD_OK, lsd_heading_iter_next(it, &h));
     TEST_ASSERT_NOT_NULL(h);
     lsd_utf16_to_utf8(h->text, h->text_length, &text);
     TEST_ASSERT_EQUAL_STRING("Abney phenomenon", text);
@@ -297,11 +306,11 @@ void test_user11_find_and_article(void) {
     lsd_reader *r = open_assert("user_11_international_lighting_vocabulary_cie_publ_no_17.lsd");
     lsd_heading h;
     memset(&h, 0, sizeof(h));
-    TEST_ASSERT_TRUE(lsd_reader_find_heading(r, "Abbey's law", &h));
+    TEST_ASSERT_EQUAL(LSD_OK, lsd_reader_find_heading(r, "Abbey's law", &h));
     TEST_ASSERT_EQUAL_UINT32(0, h.reference);
 
     char *article = NULL;
-    TEST_ASSERT_EQUAL(0, lsd_reader_read_article(r, h.reference, &article));
+    TEST_ASSERT_EQUAL(LSD_OK, lsd_reader_read_article(r, h.reference, &article));
     TEST_ASSERT_NOT_NULL(strstr(article, "закон Эбни"));
     free(article);
     lsd_heading_destroy(&h);
@@ -312,7 +321,7 @@ void test_user11_prefix(void) {
     lsd_reader *r = open_assert("user_11_international_lighting_vocabulary_cie_publ_no_17.lsd");
     lsd_heading *results = NULL;
     size_t count = 0;
-    TEST_ASSERT_TRUE(lsd_reader_prefix(r, "Ab", 0, &results, &count));
+    TEST_ASSERT_EQUAL(LSD_OK, lsd_reader_prefix(r, "Ab", 0, &results, &count));
     TEST_ASSERT_EQUAL_size_t(6, count);
     char *text = NULL;
     lsd_utf16_to_utf8(results[0].text, results[0].text_length, &text);
@@ -338,16 +347,16 @@ void test_user12_open(void) {
 void test_user12_iter_first2(void) {
     lsd_reader *r = open_assert("user_12_accountingenru.lsd");
     lsd_heading_iter *it = lsd_heading_iter_create(r);
-    const lsd_heading *h;
+    const lsd_heading *h = NULL;
     char *text = NULL;
 
-    h = lsd_heading_iter_next(it);
+    TEST_ASSERT_EQUAL(LSD_OK, lsd_heading_iter_next(it, &h));
     TEST_ASSERT_NOT_NULL(h);
     lsd_utf16_to_utf8(h->text, h->text_length, &text);
     TEST_ASSERT_EQUAL_STRING("150 percent declining balance depreciation", text);
     free(text);
 
-    h = lsd_heading_iter_next(it);
+    TEST_ASSERT_EQUAL(LSD_OK, lsd_heading_iter_next(it, &h));
     TEST_ASSERT_NOT_NULL(h);
     lsd_utf16_to_utf8(h->text, h->text_length, &text);
     TEST_ASSERT_EQUAL_STRING("150 percent declining balance depreciation method", text);
@@ -361,11 +370,11 @@ void test_user12_find_and_article(void) {
     lsd_reader *r = open_assert("user_12_accountingenru.lsd");
     lsd_heading h;
     memset(&h, 0, sizeof(h));
-    TEST_ASSERT_TRUE(lsd_reader_find_heading(r, "150 percent declining balance depreciation", &h));
+    TEST_ASSERT_EQUAL(LSD_OK, lsd_reader_find_heading(r, "150 percent declining balance depreciation", &h));
     TEST_ASSERT_EQUAL_UINT32(0, h.reference);
 
     char *article = NULL;
-    TEST_ASSERT_EQUAL(0, lsd_reader_read_article(r, h.reference, &article));
+    TEST_ASSERT_EQUAL(LSD_OK, lsd_reader_read_article(r, h.reference, &article));
     TEST_ASSERT_NOT_NULL(strstr(article, "амортизация"));
     free(article);
     lsd_heading_destroy(&h);
@@ -376,7 +385,7 @@ void test_user12_prefix(void) {
     lsd_reader *r = open_assert("user_12_accountingenru.lsd");
     lsd_heading *results = NULL;
     size_t count = 0;
-    TEST_ASSERT_TRUE(lsd_reader_prefix(r, "acc", 0, &results, &count));
+    TEST_ASSERT_EQUAL(LSD_OK, lsd_reader_prefix(r, "acc", 0, &results, &count));
     TEST_ASSERT_EQUAL_size_t(204, count);
     char *text = NULL;
     lsd_utf16_to_utf8(results[0].text, results[0].text_length, &text);
@@ -405,16 +414,16 @@ void test_user13_open(void) {
 void test_user13_iter_first2(void) {
     lsd_reader *r = open_assert("user_13_ru_be_false_friends_yzb_1_0_x3.lsd");
     lsd_heading_iter *it = lsd_heading_iter_create(r);
-    const lsd_heading *h;
+    const lsd_heading *h = NULL;
     char *text = NULL;
 
-    h = lsd_heading_iter_next(it);
+    TEST_ASSERT_EQUAL(LSD_OK, lsd_heading_iter_next(it, &h));
     TEST_ASSERT_NOT_NULL(h);
     lsd_utf16_to_utf8(h->text, h->text_length, &text);
     TEST_ASSERT_EQUAL_STRING("арбуз", text);
     free(text);
 
-    h = lsd_heading_iter_next(it);
+    TEST_ASSERT_EQUAL(LSD_OK, lsd_heading_iter_next(it, &h));
     TEST_ASSERT_NOT_NULL(h);
     lsd_utf16_to_utf8(h->text, h->text_length, &text);
     TEST_ASSERT_EQUAL_STRING("бабка", text);
@@ -428,11 +437,11 @@ void test_user13_find_and_article(void) {
     lsd_reader *r = open_assert("user_13_ru_be_false_friends_yzb_1_0_x3.lsd");
     lsd_heading h;
     memset(&h, 0, sizeof(h));
-    TEST_ASSERT_TRUE(lsd_reader_find_heading(r, "арбуз", &h));
+    TEST_ASSERT_EQUAL(LSD_OK, lsd_reader_find_heading(r, "арбуз", &h));
     TEST_ASSERT_EQUAL_UINT32(0, h.reference);
 
     char *article = NULL;
-    TEST_ASSERT_EQUAL(0, lsd_reader_read_article(r, h.reference, &article));
+    TEST_ASSERT_EQUAL(LSD_OK, lsd_reader_read_article(r, h.reference, &article));
     TEST_ASSERT_NOT_NULL(strstr(article, "кавун"));
     free(article);
     lsd_heading_destroy(&h);
@@ -443,7 +452,7 @@ void test_user13_prefix(void) {
     lsd_reader *r = open_assert("user_13_ru_be_false_friends_yzb_1_0_x3.lsd");
     lsd_heading *results = NULL;
     size_t count = 0;
-    TEST_ASSERT_TRUE(lsd_reader_prefix(r, "бабк", 0, &results, &count));
+    TEST_ASSERT_EQUAL(LSD_OK, lsd_reader_prefix(r, "бабк", 0, &results, &count));
     TEST_ASSERT_EQUAL_size_t(1, count);
     char *text = NULL;
     lsd_utf16_to_utf8(results[0].text, results[0].text_length, &text);
@@ -470,16 +479,16 @@ void test_user14_open(void) {
 void test_user14_iter_first2(void) {
     lsd_reader *r = open_assert("user_14_eng_rus_greatbritain_x5.lsd");
     lsd_heading_iter *it = lsd_heading_iter_create(r);
-    const lsd_heading *h;
+    const lsd_heading *h = NULL;
     char *text = NULL;
 
-    h = lsd_heading_iter_next(it);
+    TEST_ASSERT_EQUAL(LSD_OK, lsd_heading_iter_next(it, &h));
     TEST_ASSERT_NOT_NULL(h);
     lsd_utf16_to_utf8(h->text, h->text_length, &text);
     TEST_ASSERT_EQUAL_STRING("'Arry", text);
     free(text);
 
-    h = lsd_heading_iter_next(it);
+    TEST_ASSERT_EQUAL(LSD_OK, lsd_heading_iter_next(it, &h));
     TEST_ASSERT_NOT_NULL(h);
     lsd_utf16_to_utf8(h->text, h->text_length, &text);
     TEST_ASSERT_EQUAL_STRING("-shire", text);
@@ -493,11 +502,11 @@ void test_user14_find_and_article(void) {
     lsd_reader *r = open_assert("user_14_eng_rus_greatbritain_x5.lsd");
     lsd_heading h;
     memset(&h, 0, sizeof(h));
-    TEST_ASSERT_TRUE(lsd_reader_find_heading(r, "'Arry", &h));
+    TEST_ASSERT_EQUAL(LSD_OK, lsd_reader_find_heading(r, "'Arry", &h));
     TEST_ASSERT_EQUAL_UINT32(0, h.reference);
 
     char *article = NULL;
-    TEST_ASSERT_EQUAL(0, lsd_reader_read_article(r, h.reference, &article));
+    TEST_ASSERT_EQUAL(LSD_OK, lsd_reader_read_article(r, h.reference, &article));
     TEST_ASSERT_NOT_NULL(strstr(article, "[/trn]"));
     free(article);
     lsd_heading_destroy(&h);
@@ -508,7 +517,8 @@ void test_user14_iter_count(void) {
     lsd_reader *r = open_assert("user_14_eng_rus_greatbritain_x5.lsd");
     lsd_heading_iter *it = lsd_heading_iter_create(r);
     int count = 0;
-    while (lsd_heading_iter_next(it)) count++;
+    const lsd_heading *h = NULL;
+    while (lsd_heading_iter_next(it, &h) == LSD_OK) count++;
     TEST_ASSERT_EQUAL_INT(9537, count);
     lsd_heading_iter_destroy(it);
     lsd_reader_close(r);
@@ -518,7 +528,7 @@ void test_user14_prefix(void) {
     lsd_reader *r = open_assert("user_14_eng_rus_greatbritain_x5.lsd");
     lsd_heading *results = NULL;
     size_t count = 0;
-    TEST_ASSERT_TRUE(lsd_reader_prefix(r, "ab", 0, &results, &count));
+    TEST_ASSERT_EQUAL(LSD_OK, lsd_reader_prefix(r, "ab", 0, &results, &count));
     TEST_ASSERT_EQUAL_size_t(22, count);
     char *text = NULL;
     lsd_utf16_to_utf8(results[0].text, results[0].text_length, &text);
@@ -544,16 +554,16 @@ void test_user_legacy_open(void) {
 void test_user_legacy_iter_first2(void) {
     lsd_reader *r = open_assert("user_legacy_accountingenru.lsd");
     lsd_heading_iter *it = lsd_heading_iter_create(r);
-    const lsd_heading *h;
+    const lsd_heading *h = NULL;
     char *text = NULL;
 
-    h = lsd_heading_iter_next(it);
+    TEST_ASSERT_EQUAL(LSD_OK, lsd_heading_iter_next(it, &h));
     TEST_ASSERT_NOT_NULL(h);
     lsd_utf16_to_utf8(h->text, h->text_length, &text);
     TEST_ASSERT_EQUAL_STRING("150 percent declining balance depreciation", text);
     free(text);
 
-    h = lsd_heading_iter_next(it);
+    TEST_ASSERT_EQUAL(LSD_OK, lsd_heading_iter_next(it, &h));
     TEST_ASSERT_NOT_NULL(h);
     lsd_utf16_to_utf8(h->text, h->text_length, &text);
     TEST_ASSERT_EQUAL_STRING("150 percent declining balance depreciation method", text);
@@ -567,11 +577,11 @@ void test_user_legacy_find_and_article(void) {
     lsd_reader *r = open_assert("user_legacy_accountingenru.lsd");
     lsd_heading h;
     memset(&h, 0, sizeof(h));
-    TEST_ASSERT_TRUE(lsd_reader_find_heading(r, "150 percent declining balance depreciation", &h));
+    TEST_ASSERT_EQUAL(LSD_OK, lsd_reader_find_heading(r, "150 percent declining balance depreciation", &h));
     TEST_ASSERT_EQUAL_UINT32(0, h.reference);
 
     char *article = NULL;
-    TEST_ASSERT_EQUAL(0, lsd_reader_read_article(r, h.reference, &article));
+    TEST_ASSERT_EQUAL(LSD_OK, lsd_reader_read_article(r, h.reference, &article));
     TEST_ASSERT_NOT_NULL(strstr(article, "амортизация"));
     free(article);
     lsd_heading_destroy(&h);
@@ -582,7 +592,7 @@ void test_user_legacy_prefix(void) {
     lsd_reader *r = open_assert("user_legacy_accountingenru.lsd");
     lsd_heading *results = NULL;
     size_t count = 0;
-    TEST_ASSERT_TRUE(lsd_reader_prefix(r, "acc", 0, &results, &count));
+    TEST_ASSERT_EQUAL(LSD_OK, lsd_reader_prefix(r, "acc", 0, &results, &count));
     TEST_ASSERT_EQUAL_size_t(204, count);
     char *text = NULL;
     lsd_utf16_to_utf8(results[0].text, results[0].text_length, &text);
@@ -609,16 +619,16 @@ void test_abbr14_open(void) {
 void test_abbr14_iter_first2(void) {
     lsd_reader *r = open_assert("abbr_14_eng_rus_greatbritain_x5_abrv.lsd");
     lsd_heading_iter *it = lsd_heading_iter_create(r);
-    const lsd_heading *h;
+    const lsd_heading *h = NULL;
     char *text = NULL;
 
-    h = lsd_heading_iter_next(it);
+    TEST_ASSERT_EQUAL(LSD_OK, lsd_heading_iter_next(it, &h));
     TEST_ASSERT_NOT_NULL(h);
     lsd_utf16_to_utf8(h->text, h->text_length, &text);
     TEST_ASSERT_EQUAL_STRING("австрал.", text);
     free(text);
 
-    h = lsd_heading_iter_next(it);
+    TEST_ASSERT_EQUAL(LSD_OK, lsd_heading_iter_next(it, &h));
     TEST_ASSERT_NOT_NULL(h);
     lsd_utf16_to_utf8(h->text, h->text_length, &text);
     TEST_ASSERT_EQUAL_STRING("амер.", text);
@@ -632,11 +642,11 @@ void test_abbr14_find_and_article(void) {
     lsd_reader *r = open_assert("abbr_14_eng_rus_greatbritain_x5_abrv.lsd");
     lsd_heading h;
     memset(&h, 0, sizeof(h));
-    TEST_ASSERT_TRUE(lsd_reader_find_heading(r, "австрал.", &h));
+    TEST_ASSERT_EQUAL(LSD_OK, lsd_reader_find_heading(r, "австрал.", &h));
     TEST_ASSERT_EQUAL_UINT32(0, h.reference);
 
     char *article = NULL;
-    TEST_ASSERT_EQUAL(0, lsd_reader_read_article(r, h.reference, &article));
+    TEST_ASSERT_EQUAL(LSD_OK, lsd_reader_read_article(r, h.reference, &article));
     TEST_ASSERT_NOT_NULL(strstr(article, "Австралии"));
     free(article);
     lsd_heading_destroy(&h);
@@ -647,7 +657,7 @@ void test_abbr14_prefix(void) {
     lsd_reader *r = open_assert("abbr_14_eng_rus_greatbritain_x5_abrv.lsd");
     lsd_heading *results = NULL;
     size_t count = 0;
-    TEST_ASSERT_TRUE(lsd_reader_prefix(r, "ам", 0, &results, &count));
+    TEST_ASSERT_EQUAL(LSD_OK, lsd_reader_prefix(r, "ам", 0, &results, &count));
     TEST_ASSERT_EQUAL_size_t(1, count);
     char *text = NULL;
     lsd_utf16_to_utf8(results[0].text, results[0].text_length, &text);
@@ -673,16 +683,16 @@ void test_abbr15_open(void) {
 void test_abbr15_iter_first2(void) {
     lsd_reader *r = open_assert("abbr_15_abbrev.lsd");
     lsd_heading_iter *it = lsd_heading_iter_create(r);
-    const lsd_heading *h;
+    const lsd_heading *h = NULL;
     char *text = NULL;
 
-    h = lsd_heading_iter_next(it);
+    TEST_ASSERT_EQUAL(LSD_OK, lsd_heading_iter_next(it, &h));
     TEST_ASSERT_NOT_NULL(h);
     lsd_utf16_to_utf8(h->text, h->text_length, &text);
     TEST_ASSERT_EQUAL_STRING("&=", text);
     free(text);
 
-    h = lsd_heading_iter_next(it);
+    TEST_ASSERT_EQUAL(LSD_OK, lsd_heading_iter_next(it, &h));
     TEST_ASSERT_NOT_NULL(h);
     lsd_utf16_to_utf8(h->text, h->text_length, &text);
     TEST_ASSERT_EQUAL_STRING("*", text);
@@ -696,11 +706,11 @@ void test_abbr15_find_and_article(void) {
     lsd_reader *r = open_assert("abbr_15_abbrev.lsd");
     lsd_heading h;
     memset(&h, 0, sizeof(h));
-    TEST_ASSERT_TRUE(lsd_reader_find_heading(r, "&=", &h));
+    TEST_ASSERT_EQUAL(LSD_OK, lsd_reader_find_heading(r, "&=", &h));
     TEST_ASSERT_EQUAL_UINT32(0, h.reference);
 
     char *article = NULL;
-    TEST_ASSERT_EQUAL(0, lsd_reader_read_article(r, h.reference, &article));
+    TEST_ASSERT_EQUAL(LSD_OK, lsd_reader_read_article(r, h.reference, &article));
     TEST_ASSERT_NOT_NULL(strstr(article, "родительного"));
     free(article);
     lsd_heading_destroy(&h);
@@ -711,7 +721,7 @@ void test_abbr15_prefix(void) {
     lsd_reader *r = open_assert("abbr_15_abbrev.lsd");
     lsd_heading *results = NULL;
     size_t count = 0;
-    TEST_ASSERT_TRUE(lsd_reader_prefix(r, "ад", 0, &results, &count));
+    TEST_ASSERT_EQUAL(LSD_OK, lsd_reader_prefix(r, "ад", 0, &results, &count));
     TEST_ASSERT_EQUAL_size_t(1, count);
     char *text = NULL;
     lsd_utf16_to_utf8(results[0].text, results[0].text_length, &text);
@@ -729,10 +739,10 @@ void test_abbr15_prefix(void) {
 void test_find_heading_null_args(void) {
     lsd_heading h;
     memset(&h, 0, sizeof(h));
-    TEST_ASSERT_FALSE(lsd_reader_find_heading(NULL, "test", &h));
+    TEST_ASSERT_EQUAL(LSD_ERR_INVALID_PARAM, lsd_reader_find_heading(NULL, "test", &h));
 
     lsd_reader *r = open_assert("system_15_activederu.lsd");
-    TEST_ASSERT_FALSE(lsd_reader_find_heading(r, NULL, &h));
+    TEST_ASSERT_EQUAL(LSD_ERR_INVALID_PARAM, lsd_reader_find_heading(r, NULL, &h));
     lsd_reader_close(r);
 }
 
@@ -740,7 +750,7 @@ void test_find_heading_not_exists(void) {
     lsd_reader *r = open_assert("system_15_activederu.lsd");
     lsd_heading h;
     memset(&h, 0, sizeof(h));
-    TEST_ASSERT_FALSE(lsd_reader_find_heading(r, "ZZZZZnonexistent", &h));
+    TEST_ASSERT_EQUAL(LSD_NOT_FOUND, lsd_reader_find_heading(r, "ZZZZZnonexistent", &h));
     lsd_reader_close(r);
 }
 
@@ -752,26 +762,26 @@ void test_prefix_no_match(void) {
     lsd_reader *r = open_assert("system_15_activederu.lsd");
     lsd_heading *results = NULL;
     size_t count = 0;
-    TEST_ASSERT_TRUE(lsd_reader_prefix(r, "zzzzz", 10, &results, &count));
-    TEST_ASSERT_EQUAL_size_t(0, count);
+    TEST_ASSERT_EQUAL(LSD_NOT_FOUND, lsd_reader_prefix(r, "zzzzz", 10, &results, &count));
     lsd_reader_close(r);
 }
 
 void test_prefix_null_args(void) {
     lsd_heading *results = NULL;
     size_t count = 0;
-    TEST_ASSERT_FALSE(lsd_reader_prefix(NULL, "Ab", 5, &results, &count));
+    TEST_ASSERT_EQUAL(LSD_ERR_INVALID_PARAM, lsd_reader_prefix(NULL, "Ab", 5, &results, &count));
 
     lsd_reader *r = open_assert("system_15_activederu.lsd");
-    TEST_ASSERT_FALSE(lsd_reader_prefix(r, NULL, 5, &results, &count));
-    TEST_ASSERT_FALSE(lsd_reader_prefix(r, "Ab", 5, NULL, &count));
-    TEST_ASSERT_FALSE(lsd_reader_prefix(r, "Ab", 5, &results, NULL));
+    TEST_ASSERT_EQUAL(LSD_ERR_INVALID_PARAM, lsd_reader_prefix(r, NULL, 5, &results, &count));
+    TEST_ASSERT_EQUAL(LSD_ERR_INVALID_PARAM, lsd_reader_prefix(r, "Ab", 5, NULL, &count));
+    TEST_ASSERT_EQUAL(LSD_ERR_INVALID_PARAM, lsd_reader_prefix(r, "Ab", 5, &results, NULL));
     lsd_reader_close(r);
 }
 
 void test_iter_null_args(void) {
     TEST_ASSERT_NULL(lsd_heading_iter_create(NULL));
-    TEST_ASSERT_NULL(lsd_heading_iter_next(NULL));
+    const lsd_heading *h = NULL;
+    TEST_ASSERT_EQUAL(LSD_ERR_INVALID_PARAM, lsd_heading_iter_next(NULL, &h));
     lsd_heading_iter_destroy(NULL);  // should not crash
 }
 

@@ -29,9 +29,10 @@ typedef struct lsd_reader lsd_reader;
 /**
  * Open an LSD file
  * @param path File path
- * @return LSD reader, or NULL on failure
+ * @param out_reader Output reader object
+ * @return LSD_OK on success, LSD_ERR_INVALID_PARAM / LSD_ERR_IO / LSD_ERR_MEMORY / LSD_ERR_FORMAT on failure
  */
-lsd_reader *lsd_reader_open(const char *path);
+lsd_status lsd_reader_open(const char *path, lsd_reader **out_reader);
 
 /**
  * Close the LSD reader
@@ -46,9 +47,9 @@ void lsd_reader_close(lsd_reader *reader);
  * Get the dictionary name (UTF-8)
  * @param reader LSD reader
  * @param name Output name (caller must free)
- * @return 0 on success
+ * @return LSD_OK on success
  */
-int lsd_reader_get_name(const lsd_reader *reader, char **name);
+lsd_status lsd_reader_get_name(const lsd_reader *reader, char **name);
 
 /**
  * Get file header information (version, entry count, languages, etc.)
@@ -65,12 +66,12 @@ const lsd_header *lsd_reader_get_header(const lsd_reader *reader);
  * Find an entry (exact match)
  * @param reader LSD reader
  * @param key Search keyword (UTF-8)
- * @param heading Output entry information
- * @return true on success
+ * @param out_heading Output entry information
+ * @return LSD_OK on success, LSD_NOT_FOUND if no match
  */
-bool lsd_reader_find_heading(lsd_reader *reader,
-                                        const char *key,
-                                        lsd_heading *heading);
+lsd_status lsd_reader_find_heading(lsd_reader *reader,
+                                   const char *key,
+                                   lsd_heading *out_heading);
 
 // ============================================================
 // Prefix search
@@ -81,15 +82,15 @@ bool lsd_reader_find_heading(lsd_reader *reader,
  * @param reader LSD reader
  * @param prefix Prefix (UTF-8)
  * @param limit Maximum number of results (0 means unlimited)
- * @param results Output entry array
+ * @param results Output entry array (caller must free each heading and the array)
  * @param result_count Output entry count
- * @return true on success
+ * @return LSD_OK on success, LSD_NOT_FOUND if no match
  */
-bool lsd_reader_prefix(lsd_reader *reader,
-                                   const char *prefix,
-                                   size_t limit,
-                                   lsd_heading **results,
-                                   size_t *result_count);
+lsd_status lsd_reader_prefix(lsd_reader *reader,
+                             const char *prefix,
+                             size_t limit,
+                             lsd_heading **results,
+                             size_t *result_count);
 
 // ============================================================
 // Article reading
@@ -100,19 +101,19 @@ bool lsd_reader_prefix(lsd_reader *reader,
  * @param reader LSD reader
  * @param reference Article reference (obtained from heading)
  * @param content Output article content (UTF-8, caller must free)
- * @return 0 on success
+ * @return LSD_OK on success
  */
-int lsd_reader_read_article(lsd_reader *reader,
-                                       uint32_t reference,
-                                       char **content);
+lsd_status lsd_reader_read_article(lsd_reader *reader,
+                                   uint32_t reference,
+                                   char **content);
 
 /**
  * Read annotation
  * @param reader LSD reader
  * @param annotation Output annotation (UTF-8, caller must free)
- * @return 0 on success
+ * @return LSD_OK on success
  */
-int lsd_reader_read_annotation(lsd_reader *reader, char **annotation);
+lsd_status lsd_reader_read_annotation(lsd_reader *reader, char **annotation);
 
 // ============================================================
 // Overlay (resource) operations
@@ -124,12 +125,12 @@ int lsd_reader_read_annotation(lsd_reader *reader, char **annotation);
  * @param name Resource name (UTF-8)
  * @param data Output data (caller must free)
  * @param size Output data size
- * @return true on success
+ * @return LSD_OK on success, LSD_NOT_FOUND if no match
  */
-bool lsd_reader_read_overlay(lsd_reader *reader,
-                                      const char *name,
-                                      uint8_t **data,
-                                      size_t *size);
+lsd_status lsd_reader_read_overlay(lsd_reader *reader,
+                                   const char *name,
+                                   uint8_t **data,
+                                   size_t *size);
 
 // ============================================================
 // Iterate all entries (iterator)
@@ -158,9 +159,10 @@ void lsd_heading_iter_destroy(lsd_heading_iter *iter);
 /**
  * Advance the iterator and get the next entry
  * @param iter Iterator
- * @return Pointer to current entry, or NULL when iteration is complete
+ * @param out_heading Output pointer to current entry
+ * @return LSD_OK on success, LSD_DONE when iteration is complete
  */
-const lsd_heading *lsd_heading_iter_next(lsd_heading_iter *iter);
+lsd_status lsd_heading_iter_next(lsd_heading_iter *iter, const lsd_heading **out_heading);
 
 // ============================================================
 // Debug helper functions

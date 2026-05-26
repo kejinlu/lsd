@@ -26,8 +26,8 @@ void run_reader_tests(void);
 static void print_first_n_entries(const char *path, int n) {
     printf("Opening: %s\n\n", path);
 
-    lsd_reader *reader = lsd_reader_open(path);
-    if (!reader) {
+    lsd_reader *reader = NULL;
+    if (lsd_reader_open(path, &reader) != LSD_OK) {
         fprintf(stderr, "Failed to open: %s\n", path);
         return;
     }
@@ -46,7 +46,7 @@ static void print_first_n_entries(const char *path, int n) {
     printf("Version:    0x%08X\n", hdr->version);
     printf("Entries:    %u\n", hdr->entries_count);
     printf("\n--- First %d entries ---\n\n", n);
-    
+
     uint8_t *odata = NULL;
     size_t osize;
     lsd_reader_read_overlay(reader, "for_sale_2.jpg", &odata, &osize);
@@ -58,13 +58,13 @@ static void print_first_n_entries(const char *path, int n) {
     lsd_heading_iter *it = lsd_heading_iter_create(reader);
     const lsd_heading *h;
     int count = 0;
-    while ((h = lsd_heading_iter_next(it)) != NULL && count < n) {
+    while (lsd_heading_iter_next(it, &h) == LSD_OK && count < n) {
         char *text = NULL;
         lsd_utf16_to_utf8(h->text, h->text_length, &text);
         printf("%4d. %s\n", count + 1, text ? text : "(null)");
 
         char *article = NULL;
-        if (lsd_reader_read_article(reader, h->reference, &article) == 0 && article) {
+        if (lsd_reader_read_article(reader, h->reference, &article) == LSD_OK && article) {
             printf("     %s\n", article);
             free(article);
         }

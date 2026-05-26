@@ -116,22 +116,23 @@ static bool ensure_decoder_loaded(lsd_reader *reader) {
 // Create and destroy
 // ============================================================
 
-lsd_reader *lsd_reader_open(const char *path) {
-    if (!path) return NULL;
+lsd_status lsd_reader_open(const char *path, lsd_reader **out_reader) {
+    if (!path || !out_reader) return LSD_ERR_INVALID_PARAM;
+    *out_reader = NULL;
 
     // Endianness check: LSD file format is little-endian; big-endian devices are not supported
     if (!is_little_endian()) {
         fprintf(stderr, "LSD Reader: unsupported big-endian platform\n");
-        return NULL;
+        return LSD_ERR_INTERNAL;
     }
 
     FILE *file = fopen(path, "rb");
-    if (!file) return NULL;
+    if (!file) return LSD_ERR_IO;
 
     lsd_reader *reader = calloc(1, sizeof(lsd_reader));
     if (!reader) {
         fclose(file);
-        return NULL;
+        return LSD_ERR_MEMORY;
     }
 
     reader->file = file;
@@ -139,7 +140,7 @@ lsd_reader *lsd_reader_open(const char *path) {
     if (!reader->bstr) {
         fclose(file);
         free(reader);
-        return NULL;
+        return LSD_ERR_MEMORY;
     }
 
     // Read file header
@@ -148,7 +149,7 @@ lsd_reader *lsd_reader_open(const char *path) {
     // Verify magic number
     if (strncmp(reader->header.magic, LSD_MAGIC, 6) != 0) {
         lsd_reader_close(reader);
-        return NULL;
+        return LSD_ERR_FORMAT;
     }
 
     // Check if version is supported
@@ -156,14 +157,15 @@ lsd_reader *lsd_reader_open(const char *path) {
 
     if (!reader->is_supported) {
         // Even if not supported, return the reader (basic info can still be retrieved)
-        return reader;
+        *out_reader = reader;
+        return LSD_OK;
     }
 
     // Create decoder
     reader->decoder = lsd_decoder_create(reader->header.version);
     if (!reader->decoder) {
         lsd_reader_close(reader);
-        return NULL;
+        return LSD_ERR_MEMORY;
     }
 
     // Read dictionary name
@@ -257,7 +259,8 @@ lsd_reader *lsd_reader_open(const char *path) {
         }
     }
 
-    return reader;
+    *out_reader = reader;
+    return LSD_OK;
 }
 
 void lsd_reader_close(lsd_reader *reader) {
@@ -291,15 +294,15 @@ void lsd_reader_close(lsd_reader *reader) {
 // Property access
 // ============================================================
 
-int lsd_reader_get_name(const lsd_reader *reader, char **name) {
-    if (!reader || !name) return -1;
+lsd_status lsd_reader_get_name(const lsd_reader *reader, char **name) {
+    if (!reader || !name) return LSD_ERR_INVALID_PARAM;
 
     if (!reader->name || reader->name_length == 0) {
         *name = strdup("");
-        return 0;
+        return LSD_OK;
     }
 
-    return lsd_utf16_to_utf8(reader->name, reader->name_length, name);
+    return lsd_utf16_to_utf8(reader->name, reader->name_length, name) == 0 ? LSD_OK : LSD_ERR_INTERNAL;
 }
 
 const lsd_header *lsd_reader_get_header(const lsd_reader *reader) {
@@ -429,15 +432,15 @@ static int lsd_leaf_page_heading_bsearch_left(lsd_leaf_page *leaf,
     return -1;  // Not found
 }
 
-static bool lsd_reader_find_heading_utf16(lsd_reader *reader,
+static lsd_status lsd_reader_find_heading_utf16(lsd_reader *reader,
                                               const uint16_t *key,
                                               size_t key_len,
                                               lsd_heading *out_heading) {
-    if (!reader || !key || !reader->is_supported) return false;
-    if (!ensure_decoder_loaded(reader)) return false;
+    if (!reader || !key || !reader->is_supported) return LSD_ERR_INVALID_PARAM;
+    if (!ensure_decoder_loaded(reader)) return LSD_ERR_STATE;
 
     uint32_t pages_count = reader->header.last_page + 1;
-    if (pages_count == 0) return false;
+    if (pages_count == 0) return LSD_NOT_FOUND;
 
     // If B+ tree structure is valid and cached, use the cached tree search
     if (reader->btree_valid && reader->root_page != 0xFFFF && reader->page_store) {
@@ -454,7 +457,8 @@ static bool lsd_reader_find_heading_utf16(lsd_reader *reader,
                 // Leaf page, search within it
                 lsd_leaf_page *leaf = lsd_page_store_get_leaf(reader->page_store, current_page, NULL, 0);
                 if (!leaf) break;
-                return lsd_leaf_page_heading_bsearch_left(leaf, key, key_len, out_heading) == 0;
+                return lsd_leaf_page_heading_bsearch_left(leaf, key, key_len, out_heading) == 0
+                       ? LSD_OK : LSD_NOT_FOUND;
             } else {
                 // Internal node, find the next child page to visit
                 lsd_node_page *node = lsd_page_store_get_node(reader->page_store, current_page);
@@ -478,31 +482,31 @@ static bool lsd_reader_find_heading_utf16(lsd_reader *reader,
         if (!leaf) continue;
 
         if (lsd_leaf_page_heading_bsearch_left(leaf, key, key_len, out_heading) == 0) {
-            return true;
+            return LSD_OK;
         }
     }
 
-    return false;
+    return LSD_NOT_FOUND;
 }
 
-bool lsd_reader_find_heading(lsd_reader *reader,
-                                        const char *key,
-                                        lsd_heading *heading) {
-    if (!reader || !key) return false;
+lsd_status lsd_reader_find_heading(lsd_reader *reader,
+                                   const char *key,
+                                   lsd_heading *heading) {
+    if (!reader || !key) return LSD_ERR_INVALID_PARAM;
 
     // Convert to UTF-16
     uint16_t *key_utf16 = NULL;
     size_t key_len = 0;
     if (lsd_utf8_to_utf16(key, &key_utf16, &key_len) != 0) {
-        return false;
+        return LSD_ERR_INTERNAL;
     }
 
     // Normalize: trim + space compression
     lsd_utf16_normalize(key_utf16);
     key_len = lsd_utf16_len(key_utf16);
-    if (key_len == 0) { free(key_utf16); return false; }
+    if (key_len == 0) { free(key_utf16); return LSD_ERR_INVALID_PARAM; }
 
-    bool result = lsd_reader_find_heading_utf16(reader, key_utf16, key_len, heading);
+    lsd_status result = lsd_reader_find_heading_utf16(reader, key_utf16, key_len, heading);
 
     free(key_utf16);
     return result;
@@ -512,13 +516,13 @@ bool lsd_reader_find_heading(lsd_reader *reader,
 // Prefix search
 // ============================================================
 
-bool lsd_reader_prefix(lsd_reader *reader,
-                                   const char *prefix,
-                                   size_t limit,
-                                   lsd_heading **results,
-                                   size_t *result_count) {
-    if (!reader || !prefix || !results || !result_count) return false;
-    if (!reader->is_supported || !ensure_decoder_loaded(reader)) return false;
+lsd_status lsd_reader_prefix(lsd_reader *reader,
+                             const char *prefix,
+                             size_t limit,
+                             lsd_heading **results,
+                             size_t *result_count) {
+    if (!reader || !prefix || !results || !result_count) return LSD_ERR_INVALID_PARAM;
+    if (!reader->is_supported || !ensure_decoder_loaded(reader)) return LSD_ERR_STATE;
 
     *results = NULL;
     *result_count = 0;
@@ -527,20 +531,20 @@ bool lsd_reader_prefix(lsd_reader *reader,
     uint16_t *prefix_utf16 = NULL;
     size_t prefix_len = 0;
     if (lsd_utf8_to_utf16(prefix, &prefix_utf16, &prefix_len) != 0) {
-        return false;
+        return LSD_ERR_INTERNAL;
     }
 
     // Normalize: trim + space compression
     lsd_utf16_normalize(prefix_utf16);
     prefix_len = lsd_utf16_len(prefix_utf16);
-    if (prefix_len == 0) { free(prefix_utf16); return false; }
+    if (prefix_len == 0) { free(prefix_utf16); return LSD_ERR_INVALID_PARAM; }
 
     // Allocate results array
     size_t capacity = limit > 0 ? limit : 64;
     lsd_heading *headings = calloc(capacity, sizeof(lsd_heading));
     if (!headings) {
         free(prefix_utf16);
-        return false;
+        return LSD_ERR_MEMORY;
     }
 
     size_t count = 0;
@@ -622,19 +626,19 @@ bool lsd_reader_prefix(lsd_reader *reader,
     *results = headings;
     *result_count = count;
 
-    return true;
+    return count > 0 ? LSD_OK : LSD_NOT_FOUND;
 }
 
 // ============================================================
 // Article reading
 // ============================================================
 
-static int lsd_reader_read_article_utf16(lsd_reader *reader,
+static lsd_status lsd_reader_read_article_utf16(lsd_reader *reader,
                                              uint32_t reference,
                                              uint16_t **content,
                                              size_t *content_len) {
-    if (!reader || !content || !content_len) return -1;
-    if (!reader->is_supported || !ensure_decoder_loaded(reader)) return -1;
+    if (!reader || !content || !content_len) return LSD_ERR_INVALID_PARAM;
+    if (!reader->is_supported || !ensure_decoder_loaded(reader)) return LSD_ERR_STATE;
 
     // Seek to the article position
     size_t article_offset = reader->header.articles_offset + reference;
@@ -642,32 +646,32 @@ static int lsd_reader_read_article_utf16(lsd_reader *reader,
 
     // Decode the article
     if (!lsd_decoder_decode_article(reader->decoder, reader->bstr, content, content_len)) {
-        return -2;
+        return LSD_ERR_FORMAT;
     }
 
-    return 0;
+    return LSD_OK;
 }
 
-int lsd_reader_read_article(lsd_reader *reader,
-                                       uint32_t reference,
-                                       char **content) {
-    if (!reader || !content) return -1;
+lsd_status lsd_reader_read_article(lsd_reader *reader,
+                                   uint32_t reference,
+                                   char **content) {
+    if (!reader || !content) return LSD_ERR_INVALID_PARAM;
 
     uint16_t *content_utf16 = NULL;
     size_t content_len = 0;
 
-    int result = lsd_reader_read_article_utf16(reader, reference, &content_utf16, &content_len);
-    if (result != 0) return result;
+    lsd_status result = lsd_reader_read_article_utf16(reader, reference, &content_utf16, &content_len);
+    if (result != LSD_OK) return result;
 
-    result = lsd_utf16_to_utf8(content_utf16, content_len, content);
+    int rc = lsd_utf16_to_utf8(content_utf16, content_len, content);
     free(content_utf16);
 
-    return result;
+    return rc == 0 ? LSD_OK : LSD_ERR_INTERNAL;
 }
 
-int lsd_reader_read_annotation(lsd_reader *reader, char **annotation) {
-    if (!reader || !annotation) return -1;
-    if (!reader->is_supported || !ensure_decoder_loaded(reader)) return -1;
+lsd_status lsd_reader_read_annotation(lsd_reader *reader, char **annotation) {
+    if (!reader || !annotation) return LSD_ERR_INVALID_PARAM;
+    if (!reader->is_supported || !ensure_decoder_loaded(reader)) return LSD_ERR_STATE;
 
     // Seek to the annotation position
     lsd_bitstream_seek(reader->bstr, reader->header.annotation_offset);
@@ -677,13 +681,13 @@ int lsd_reader_read_annotation(lsd_reader *reader, char **annotation) {
     size_t anno_len = 0;
 
     if (!lsd_decoder_decode_article(reader->decoder, reader->bstr, &anno_utf16, &anno_len)) {
-        return -2;
+        return LSD_ERR_FORMAT;
     }
 
-    int result = lsd_utf16_to_utf8(anno_utf16, anno_len, annotation);
+    int rc = lsd_utf16_to_utf8(anno_utf16, anno_len, annotation);
     free(anno_utf16);
 
-    return result;
+    return rc == 0 ? LSD_OK : LSD_ERR_INTERNAL;
 }
 
 // ============================================================
@@ -784,22 +788,22 @@ static void overlay_entries_free(lsd_reader *reader) {
     reader->overlay_count = 0;
 }
 
-bool lsd_reader_read_overlay(lsd_reader *reader,
-                                      const char *name,
-                                      uint8_t **data,
-                                      size_t *size) {
-    if (!reader || !name || !data || !size) return false;
+lsd_status lsd_reader_read_overlay(lsd_reader *reader,
+                                   const char *name,
+                                   uint8_t **data,
+                                   size_t *size) {
+    if (!reader || !name || !data || !size) return LSD_ERR_INVALID_PARAM;
 
     *data = NULL;
     *size = 0;
 
-    if (!ensure_overlay_loaded(reader)) return false;
-    if (reader->overlay_count == 0) return false;
+    if (!ensure_overlay_loaded(reader)) return LSD_ERR_INTERNAL;
+    if (reader->overlay_count == 0) return LSD_NOT_FOUND;
 
     // Convert name to UTF-16
     uint16_t *name_utf16 = NULL;
     size_t name_len = 0;
-    if (lsd_utf8_to_utf16(name, &name_utf16, &name_len) != 0) return false;
+    if (lsd_utf8_to_utf16(name, &name_utf16, &name_len) != 0) return LSD_ERR_INTERNAL;
 
     // Binary search
     size_t left = 0, right = reader->overlay_count;
@@ -822,14 +826,14 @@ bool lsd_reader_read_overlay(lsd_reader *reader,
 
     free(name_utf16);
 
-    if (!found) return false;
+    if (!found) return LSD_NOT_FOUND;
 
     // Seek to the data position
     lsd_bitstream_seek(reader->bstr, found->offset + reader->overlay_data);
 
     // Read compressed data
     uint8_t *compressed = malloc(found->stream_size);
-    if (!compressed) return false;
+    if (!compressed) return LSD_ERR_MEMORY;
 
     lsd_bitstream_read_bytes(reader->bstr, compressed, found->stream_size);
 
@@ -837,7 +841,7 @@ bool lsd_reader_read_overlay(lsd_reader *reader,
     uint8_t *inflated = malloc(found->inflated_size);
     if (!inflated) {
         free(compressed);
-        return false;
+        return LSD_ERR_MEMORY;
     }
 
     uLongf dest_len = found->inflated_size;
@@ -847,13 +851,13 @@ bool lsd_reader_read_overlay(lsd_reader *reader,
 
     if (ret != Z_OK) {
         free(inflated);
-        return false;
+        return LSD_ERR_FORMAT;
     }
 
     *data = inflated;
     *size = dest_len;
 
-    return true;
+    return LSD_OK;
 }
 
 // ============================================================
@@ -931,8 +935,10 @@ void lsd_heading_iter_destroy(lsd_heading_iter *iter) {
     free(iter);
 }
 
-const lsd_heading *lsd_heading_iter_next(lsd_heading_iter *iter) {
-    if (!iter || iter->exhausted) return NULL;
+lsd_status lsd_heading_iter_next(lsd_heading_iter *iter, const lsd_heading **out_heading) {
+    if (!iter || !out_heading) return LSD_ERR_INVALID_PARAM;
+    *out_heading = NULL;
+    if (iter->exhausted) return LSD_DONE;
 
     lsd_reader *reader = iter->reader;
 
@@ -942,7 +948,7 @@ const lsd_heading *lsd_heading_iter_next(lsd_heading_iter *iter) {
             reader->page_store, iter->current_page_num, NULL, 0);
         if (!iter->current_leaf || iter->current_leaf->heading_count == 0) {
             iter->exhausted = true;
-            return NULL;
+            return LSD_DONE;
         }
         iter->heading_index = 0;
     }
@@ -953,14 +959,14 @@ const lsd_heading *lsd_heading_iter_next(lsd_heading_iter *iter) {
 
         if (next_page == 0xFFFF) {
             iter->exhausted = true;
-            return NULL;
+            return LSD_DONE;
         }
 
         iter->current_leaf = lsd_page_store_get_leaf(
             reader->page_store, next_page, NULL, 0);
         if (!iter->current_leaf) {
             iter->exhausted = true;
-            return NULL;
+            return LSD_DONE;
         }
 
         iter->current_page_num = next_page;
@@ -974,7 +980,8 @@ const lsd_heading *lsd_heading_iter_next(lsd_heading_iter *iter) {
     iter_current_copy(iter, &iter->current_leaf->headings[iter->heading_index]);
     iter->heading_index++;
 
-    return &iter->current;
+    *out_heading = &iter->current;
+    return LSD_OK;
 }
 
 void lsd_reader_dump_info(const lsd_reader *reader) {

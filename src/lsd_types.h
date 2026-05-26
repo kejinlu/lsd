@@ -16,6 +16,23 @@ extern "C" {
 #endif
 
 // ============================================================
+// Status codes
+// ============================================================
+
+typedef enum {
+    LSD_OK                = 0,
+    LSD_NOT_FOUND         = 1,
+    LSD_DONE              = 2,
+
+    LSD_ERR_INVALID_PARAM = -1,
+    LSD_ERR_IO            = -2,
+    LSD_ERR_MEMORY        = -3,
+    LSD_ERR_FORMAT        = -4,
+    LSD_ERR_INTERNAL      = -5,
+    LSD_ERR_STATE         = -6,
+} lsd_status;
+
+// ============================================================
 // LSD file header (disk format, little-endian, packed)
 // ============================================================
 
