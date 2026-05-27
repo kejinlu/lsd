@@ -34,6 +34,11 @@
     #define lsd_ftell ftello
 #endif
 
+// ---- strtok_r / strtok_s (MSVC) ----
+#if defined(_MSC_VER)
+    #define strtok_r strtok_s
+#endif
+
 // ---- strndup polyfill (MSVC) ----
 #if defined(_MSC_VER) && !defined(strndup)
 static inline char *lsd_strndup(const char *s, size_t n) {
