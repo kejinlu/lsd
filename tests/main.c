@@ -18,6 +18,7 @@
 void run_utils_tests(void);
 void run_bitstream_tests(void);
 void run_reader_tests(void);
+void run_dsl_tests(void);
 
 // ============================================================
 // 打印前 N 个词条
@@ -163,5 +164,6 @@ int main(void) {
     run_utils_tests();
     run_bitstream_tests();
     run_reader_tests();
+    run_dsl_tests();
     return 0;
 }

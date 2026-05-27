@@ -9,6 +9,7 @@ set(TEST_SOURCES
     test_utils.c
     test_bitstream.c
     test_reader.c
+    test_dsl.c
 )
 
 # Create test executable

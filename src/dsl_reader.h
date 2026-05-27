@@ -8,13 +8,10 @@
 #ifndef dsl_h
 #define dsl_h
 
+#include "lsd_types.h"
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
-#include <stdio.h>
-
-// Forward declaration (avoids exposing dictzip internal implementation and zlib dependency)
-typedef struct dictzip dictzip;
 
 #ifdef __cplusplus
 extern "C" {
@@ -23,6 +20,7 @@ extern "C" {
 // ============================================================
 // DSL file encoding
 // ============================================================
+
 typedef enum {
     DSL_ENCODING_UNKNOWN,
     DSL_ENCODING_UTF8,
@@ -31,8 +29,9 @@ typedef enum {
 } dsl_encoding;
 
 // ============================================================
-// DSL file header information
+// DSL file header
 // ============================================================
+
 typedef struct dsl_header {
     char *name;              // Dictionary name
     char *index_language;    // Source language
@@ -44,6 +43,7 @@ typedef struct dsl_header {
 // ============================================================
 // DSL article
 // ============================================================
+
 typedef struct dsl_article {
     char *heading;           // Article heading
     size_t heading_length;   // Heading length
@@ -53,126 +53,52 @@ typedef struct dsl_article {
 } dsl_article;
 
 // ============================================================
-// DSL reader
-// ============================================================
-typedef struct dsl_reader {
-    FILE *file;              // File handle (for uncompressed files)
-    dictzip *dz;              // dictzip handle (for DSL.dz files)
-    const char *filename;    // File name
-
-    dsl_header header;       // File header information
-
-    size_t file_size;        // File size
-    size_t data_offset;      // Data area start position
-    size_t current_offset;   // Current read position (after decompression)
-    bool is_dz;              // Whether the file is compressed
-
-    // Read buffer (for dictzip)
-    char *read_buffer;       // Read buffer
-    size_t buffer_size;      // Buffer size
-    size_t buffer_pos;       // Current buffer position
-    size_t buffer_valid;     // Valid data length in buffer
-} dsl_reader;
-
-// ============================================================
-// Creation and destruction
+// DSL reader (opaque)
 // ============================================================
 
-/**
- * Open a DSL file
- * @param filename File path
- * @return DSL reader, or NULL on failure
- */
-dsl_reader *dsl_reader_open(const char *filename);
+typedef struct dsl_reader dsl_reader;
 
-/**
- * Close the DSL reader
- * @param reader DSL reader
- */
+// ============================================================
+// Article iterator (opaque)
+//
+// Iterates all articles in file order (sequential).
+// The returned article pointer is valid until the next
+// dsl_article_iter_next call or iterator destruction.
+// ============================================================
+
+typedef struct dsl_article_iter dsl_article_iter;
+
+// ============================================================
+// Create and destroy
+// ============================================================
+
+lsd_status dsl_reader_open(const char *filename, dsl_reader **out_reader);
 void dsl_reader_close(dsl_reader *reader);
 
 // ============================================================
 // Property access
 // ============================================================
 
-/**
- * Get file header information
- * @param reader DSL reader
- * @return Pointer to file header information
- */
 const dsl_header *dsl_reader_get_header(const dsl_reader *reader);
-
-/**
- * Get dictionary name
- * @param reader DSL reader
- * @param name Output name (UTF-8, caller must free)
- * @return 0 on success
- */
-int dsl_reader_get_name(const dsl_reader *reader, char **name);
-
-/**
- * Get source language code
- * @param reader DSL reader
- * @return Source language code string (do not free)
- */
+lsd_status dsl_reader_get_name(const dsl_reader *reader, char **name);
 const char *dsl_reader_get_source_language(const dsl_reader *reader);
-
-/**
- * Get target language code
- * @param reader DSL reader
- * @return Target language code string (do not free)
- */
 const char *dsl_reader_get_target_language(const dsl_reader *reader);
-
-/**
- * Get metadata
- * @param reader DSL reader
- * @return Metadata string (do not free), extracted from double braces {{ ... }}
- */
 const char *dsl_reader_get_metadata(const dsl_reader *reader);
-
-/**
- * Get file encoding
- * @param reader DSL reader
- * @return File encoding type
- */
 dsl_encoding dsl_reader_get_encoding(const dsl_reader *reader);
 
 // ============================================================
-// Article reading
+// Article iterator
 // ============================================================
 
-/**
- * Read the next article
- * @param reader DSL reader
- * @param article Article structure (caller must free)
- * @return true on success, false when end of file is reached
- */
-bool dsl_reader_next_article(dsl_reader *reader, dsl_article *article);
-
-/**
- * Free article resources
- * @param article Article structure
- */
-void dsl_article_free(dsl_article *article);
+dsl_article_iter *dsl_article_iter_create(dsl_reader *reader);
+void dsl_article_iter_destroy(dsl_article_iter *iter);
+lsd_status dsl_article_iter_next(dsl_article_iter *iter, const dsl_article **out_article);
 
 // ============================================================
-// Utility functions
+// Utility
 // ============================================================
 
-/**
- * Get encoding name
- * @param encoding Encoding type
- * @return Encoding name string
- */
 const char *dsl_encoding_name(dsl_encoding encoding);
-
-/**
- * Detect file encoding from BOM
- * @param reader DSL reader
- * @return Detected encoding type
- */
-dsl_encoding dsl_detect_bom(dsl_reader *reader);
 
 #ifdef __cplusplus
 }
