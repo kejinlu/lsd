@@ -44,6 +44,7 @@
 		692F17712F8CFCB90037745D /* libvorbis.0.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libvorbis.0.dylib; path = ../../../../opt/homebrew/Cellar/libvorbis/1.3.7/lib/libvorbis.0.dylib; sourceTree = "<group>"; };
 		692F17782F8DEC6E0037745D /* libunistring.5.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libunistring.5.dylib; path = ../../../../opt/homebrew/Cellar/libunistring/1.4.2/lib/libunistring.5.dylib; sourceTree = "<group>"; };
 		692F1D552F91DC900037745D /* dictzip.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = dictzip.xcodeproj; sourceTree = "<group>"; };
+		69895FB32FC69F9A00D4E83D /* dictzip.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = dictzip.xcodeproj; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -165,6 +166,13 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
+		69895FB62FC69F9A00D4E83D /* Products */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXHeadersBuildPhase section */
@@ -256,6 +264,10 @@
 				{
 					ProductGroup = 692F1D592F91DC900037745D /* Products */;
 					ProjectRef = 692F1D552F91DC900037745D /* dictzip.xcodeproj */;
+				},
+				{
+					ProductGroup = 69895FB62FC69F9A00D4E83D /* Products */;
+					ProjectRef = 69895FB32FC69F9A00D4E83D /* dictzip.xcodeproj */;
 				},
 			);
 			projectRoot = "";

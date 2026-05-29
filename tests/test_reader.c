@@ -786,6 +786,36 @@ void test_iter_null_args(void) {
 }
 
 // ============================================================
+// Tests: get_source_lang / get_target_lang
+// ============================================================
+
+void test_lang_null_reader(void) {
+    TEST_ASSERT_NULL(lsd_reader_get_source_lang(NULL));
+    TEST_ASSERT_NULL(lsd_reader_get_target_lang(NULL));
+}
+
+void test_system14_lang(void) {
+    lsd_reader *r = open_assert("system_14_activederu.lsd");
+    TEST_ASSERT_EQUAL_STRING("de", lsd_reader_get_source_lang(r));
+    TEST_ASSERT_EQUAL_STRING("ru", lsd_reader_get_target_lang(r));
+    lsd_reader_close(r);
+}
+
+void test_system15_lang(void) {
+    lsd_reader *r = open_assert("system_15_activederu.lsd");
+    TEST_ASSERT_EQUAL_STRING("de", lsd_reader_get_source_lang(r));
+    TEST_ASSERT_EQUAL_STRING("ru", lsd_reader_get_target_lang(r));
+    lsd_reader_close(r);
+}
+
+void test_user13_lang(void) {
+    lsd_reader *r = open_assert("user_13_ru_be_false_friends_yzb_1_0_x3.lsd");
+    TEST_ASSERT_EQUAL_STRING("ru", lsd_reader_get_source_lang(r));
+    TEST_ASSERT_EQUAL_STRING("be", lsd_reader_get_target_lang(r));
+    lsd_reader_close(r);
+}
+
+// ============================================================
 // Test Runner
 // ============================================================
 
@@ -864,6 +894,12 @@ void run_reader_tests(void) {
     RUN_TEST(test_prefix_no_match);
     RUN_TEST(test_prefix_null_args);
     RUN_TEST(test_iter_null_args);
+
+    // source/target lang
+    RUN_TEST(test_lang_null_reader);
+    RUN_TEST(test_system14_lang);
+    RUN_TEST(test_system15_lang);
+    RUN_TEST(test_user13_lang);
 
     UnityEnd();
 }

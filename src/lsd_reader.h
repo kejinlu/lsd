@@ -58,6 +58,18 @@ lsd_status lsd_reader_get_name(const lsd_reader *reader, char **name);
  */
 const lsd_header *lsd_reader_get_header(const lsd_reader *reader);
 
+/**
+ * Get source language as BCP 47 tag (e.g., "en", "zh-CN").
+ * Returned pointer is static, do not free. NULL if unknown.
+ */
+const char *lsd_reader_get_source_lang(const lsd_reader *reader);
+
+/**
+ * Get target language as BCP 47 tag (e.g., "ru", "de-1996").
+ * Returned pointer is static, do not free. NULL if unknown.
+ */
+const char *lsd_reader_get_target_lang(const lsd_reader *reader);
+
 // ============================================================
 // Entry lookup (B+ tree binary search)
 // ============================================================

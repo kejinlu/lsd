@@ -9,6 +9,7 @@
 #include "lsd_page_store.h"
 #include "lsd_bitstream.h"
 #include "lsd_decoder.h"
+#include "lsd_lang_map.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -307,6 +308,16 @@ lsd_status lsd_reader_get_name(const lsd_reader *reader, char **name) {
 
 const lsd_header *lsd_reader_get_header(const lsd_reader *reader) {
     return reader ? &reader->header : NULL;
+}
+
+const char *lsd_reader_get_source_lang(const lsd_reader *reader) {
+    if (!reader) return NULL;
+    return lsd_lang_lookup_bcp47(reader->header.source_language);
+}
+
+const char *lsd_reader_get_target_lang(const lsd_reader *reader) {
+    if (!reader) return NULL;
+    return lsd_lang_lookup_bcp47(reader->header.target_language);
 }
 
 // ============================================================
