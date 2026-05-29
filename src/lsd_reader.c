@@ -871,6 +871,57 @@ lsd_status lsd_reader_read_overlay(lsd_reader *reader,
     return LSD_OK;
 }
 
+size_t lsd_reader_get_overlay_count(lsd_reader *reader) {
+    if (!reader) return 0;
+    if (!ensure_overlay_loaded(reader)) return 0;
+    return reader->overlay_count;
+}
+
+lsd_status lsd_reader_read_overlay_at(lsd_reader *reader,
+                                       size_t index,
+                                       char **out_name,
+                                       uint8_t **data,
+                                       size_t *size) {
+    if (!reader) return LSD_ERR_INVALID_PARAM;
+    if (!ensure_overlay_loaded(reader)) return LSD_ERR_INTERNAL;
+    if (index >= reader->overlay_count) return LSD_NOT_FOUND;
+
+    const lsd_overlay_heading *entry = &reader->overlay_entries[index];
+
+    if (out_name) {
+        lsd_utf16_to_utf8(entry->name, entry->name_length, out_name);
+    }
+
+    if (data && size) {
+        lsd_bitstream_seek(reader->bstr, entry->offset + reader->overlay_data);
+
+        uint8_t *compressed = malloc(entry->stream_size);
+        if (!compressed) return LSD_ERR_MEMORY;
+
+        lsd_bitstream_read_bytes(reader->bstr, compressed, entry->stream_size);
+
+        uint8_t *inflated = malloc(entry->inflated_size);
+        if (!inflated) {
+            free(compressed);
+            return LSD_ERR_MEMORY;
+        }
+
+        uLongf dest_len = entry->inflated_size;
+        int ret = uncompress(inflated, &dest_len, compressed, entry->stream_size);
+        free(compressed);
+
+        if (ret != Z_OK) {
+            free(inflated);
+            return LSD_ERR_FORMAT;
+        }
+
+        *data = inflated;
+        *size = dest_len;
+    }
+
+    return LSD_OK;
+}
+
 // ============================================================
 // Heading iterator
 // ============================================================

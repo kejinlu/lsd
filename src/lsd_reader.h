@@ -144,6 +144,28 @@ lsd_status lsd_reader_read_overlay(lsd_reader *reader,
                                    uint8_t **data,
                                    size_t *size);
 
+/**
+ * Get overlay resource count
+ * @param reader LSD reader
+ * @return Number of overlay entries, 0 if none or on error
+ */
+size_t lsd_reader_get_overlay_count(lsd_reader *reader);
+
+/**
+ * Read overlay resource by index
+ * @param reader LSD reader
+ * @param index 0-based index
+ * @param out_name Output resource name (UTF-8, caller must free), can be NULL
+ * @param data Output data (caller must free), can be NULL
+ * @param size Output data size, can be NULL
+ * @return LSD_OK on success, LSD_NOT_FOUND if index out of range
+ */
+lsd_status lsd_reader_read_overlay_at(lsd_reader *reader,
+                                       size_t index,
+                                       char **out_name,
+                                       uint8_t **data,
+                                       size_t *size);
+
 // ============================================================
 // Iterate all entries (iterator)
 // ============================================================
