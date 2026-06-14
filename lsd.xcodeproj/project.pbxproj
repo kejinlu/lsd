@@ -38,13 +38,14 @@
 
 /* Begin PBXFileReference section */
 		692F15482F89398D0037745D /* liblsd.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = liblsd.a; sourceTree = BUILT_PRODUCTS_DIR; };
-		692F15F02F89F61E0037745D /* tests */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = tests; sourceTree = BUILT_PRODUCTS_DIR; };
+		692F15F02F89F61E0037745D /* lsd-tests */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = "lsd-tests"; sourceTree = BUILT_PRODUCTS_DIR; };
 		692F176F2F8CFCB90037745D /* libvorbisfile.3.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libvorbisfile.3.dylib; path = ../../../../opt/homebrew/Cellar/libvorbis/1.3.7/lib/libvorbisfile.3.dylib; sourceTree = "<group>"; };
 		692F17702F8CFCB90037745D /* libogg.0.8.6.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libogg.0.8.6.dylib; path = ../../../../opt/homebrew/Cellar/libogg/1.3.6/lib/libogg.0.8.6.dylib; sourceTree = "<group>"; };
 		692F17712F8CFCB90037745D /* libvorbis.0.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libvorbis.0.dylib; path = ../../../../opt/homebrew/Cellar/libvorbis/1.3.7/lib/libvorbis.0.dylib; sourceTree = "<group>"; };
 		692F17782F8DEC6E0037745D /* libunistring.5.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libunistring.5.dylib; path = ../../../../opt/homebrew/Cellar/libunistring/1.4.2/lib/libunistring.5.dylib; sourceTree = "<group>"; };
 		692F1D552F91DC900037745D /* dictzip.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = dictzip.xcodeproj; sourceTree = "<group>"; };
 		69895FB32FC69F9A00D4E83D /* dictzip.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = dictzip.xcodeproj; sourceTree = "<group>"; };
+		69897B062FDD3EC100D4E83D /* dictzip.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = dictzip.xcodeproj; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -61,6 +62,8 @@
 				lsd_decoder.h,
 				lsd_huffman.c,
 				lsd_huffman.h,
+				lsd_lang_map.c,
+				lsd_lang_map.h,
 				lsd_page_store.c,
 				lsd_page_store.h,
 				lsd_reader.c,
@@ -143,7 +146,7 @@
 			isa = PBXGroup;
 			children = (
 				692F15482F89398D0037745D /* liblsd.a */,
-				692F15F02F89F61E0037745D /* tests */,
+				692F15F02F89F61E0037745D /* lsd-tests */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -167,6 +170,13 @@
 			sourceTree = "<group>";
 		};
 		69895FB62FC69F9A00D4E83D /* Products */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		69897B092FDD3EC100D4E83D /* Products */ = {
 			isa = PBXGroup;
 			children = (
 			);
@@ -208,9 +218,9 @@
 			productReference = 692F15482F89398D0037745D /* liblsd.a */;
 			productType = "com.apple.product-type.library.static";
 		};
-		692F15EF2F89F61E0037745D /* tests */ = {
+		692F15EF2F89F61E0037745D /* lsd-tests */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 692F15F42F89F61E0037745D /* Build configuration list for PBXNativeTarget "tests" */;
+			buildConfigurationList = 692F15F42F89F61E0037745D /* Build configuration list for PBXNativeTarget "lsd-tests" */;
 			buildPhases = (
 				692F15EC2F89F61E0037745D /* Sources */,
 				692F15ED2F89F61E0037745D /* Frameworks */,
@@ -224,11 +234,11 @@
 			fileSystemSynchronizedGroups = (
 				692F15F12F89F61E0037745D /* tests */,
 			);
-			name = tests;
+			name = "lsd-tests";
 			packageProductDependencies = (
 			);
 			productName = tests;
-			productReference = 692F15F02F89F61E0037745D /* tests */;
+			productReference = 692F15F02F89F61E0037745D /* lsd-tests */;
 			productType = "com.apple.product-type.tool";
 		};
 /* End PBXNativeTarget section */
@@ -266,6 +276,10 @@
 					ProjectRef = 692F1D552F91DC900037745D /* dictzip.xcodeproj */;
 				},
 				{
+					ProductGroup = 69897B092FDD3EC100D4E83D /* Products */;
+					ProjectRef = 69897B062FDD3EC100D4E83D /* dictzip.xcodeproj */;
+				},
+				{
 					ProductGroup = 69895FB62FC69F9A00D4E83D /* Products */;
 					ProjectRef = 69895FB32FC69F9A00D4E83D /* dictzip.xcodeproj */;
 				},
@@ -273,7 +287,7 @@
 			projectRoot = "";
 			targets = (
 				692F15472F89398D0037745D /* lsd */,
-				692F15EF2F89F61E0037745D /* tests */,
+				692F15EF2F89F61E0037745D /* lsd-tests */,
 			);
 		};
 /* End PBXProject section */
@@ -500,7 +514,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		692F15F42F89F61E0037745D /* Build configuration list for PBXNativeTarget "tests" */ = {
+		692F15F42F89F61E0037745D /* Build configuration list for PBXNativeTarget "lsd-tests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				692F15F52F89F61E0037745D /* Debug */,

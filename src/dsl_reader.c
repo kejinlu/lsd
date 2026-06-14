@@ -16,7 +16,6 @@
 // Constants
 // ============================================================
 #define READ_BUFFER_SIZE (64 * 1024)
-#define LINE_BUFFER_SIZE 4096
 
 // ============================================================
 // Struct definitions (opaque)
@@ -25,7 +24,7 @@
 struct dsl_reader {
     FILE *file;
     dictzip *dz;
-    const char *filename;
+    char *filename;
 
     dsl_header header;
 
@@ -90,7 +89,9 @@ static int dsl_getc(dsl_reader *reader) {
             if (!data || bytes_read == 0) return EOF;
 
             if (reader->buffer_size < bytes_read) {
-                reader->read_buffer = realloc(reader->read_buffer, bytes_read);
+                char *nb = realloc(reader->read_buffer, bytes_read);
+                if (!nb) { free(data); return EOF; }
+                reader->read_buffer = nb;
                 reader->buffer_size = bytes_read;
             }
 
@@ -123,7 +124,9 @@ static int dsl_get_utf16_char(dsl_reader *reader) {
             if (!data || bytes_read == 0) return EOF;
 
             if (reader->buffer_size < bytes_read) {
-                reader->read_buffer = realloc(reader->read_buffer, bytes_read);
+                char *nb = realloc(reader->read_buffer, bytes_read);
+                if (!nb) { free(data); return EOF; }
+                reader->read_buffer = nb;
                 reader->buffer_size = bytes_read;
             }
 
@@ -203,15 +206,18 @@ static int dsl_get_utf16_char(dsl_reader *reader) {
 static char *dsl_read_line(dsl_reader *reader) {
     if (!reader) return NULL;
 
-    char buffer[LINE_BUFFER_SIZE];
-    size_t offset = 0;
+    size_t cap = 256;
+    size_t len = 0;
+    char *buf = malloc(cap);
+    if (!buf) return NULL;
+
     int ch = 0;
 
     bool is_utf16 = (reader->header.encoding == DSL_ENCODING_UTF16LE ||
                      reader->header.encoding == DSL_ENCODING_UTF16BE);
 
     if (is_utf16) {
-        while (offset < sizeof(buffer) - 4) {
+        while (1) {
             ch = dsl_get_utf16_char(reader);
             if (ch == EOF) break;
             if (ch == '\n') break;
@@ -219,28 +225,40 @@ static char *dsl_read_line(dsl_reader *reader) {
 
             char utf8_buf[4];
             int utf8_len = unicode_to_utf8((uint32_t)ch, utf8_buf);
-            if (utf8_len > 0 && offset + utf8_len < sizeof(buffer)) {
-                memcpy(buffer + offset, utf8_buf, utf8_len);
-                offset += utf8_len;
+            if (utf8_len <= 0) continue;
+
+            if (len + utf8_len + 1 >= cap) {
+                cap = (len + utf8_len + 1) * 2;
+                char *nb = realloc(buf, cap);
+                if (!nb) { free(buf); return NULL; }
+                buf = nb;
             }
+            memcpy(buf + len, utf8_buf, utf8_len);
+            len += utf8_len;
         }
-
-        if (offset == 0 && ch == EOF) return NULL;
-
-        buffer[offset] = '\0';
-        return strdup(buffer);
     } else {
-        while (offset < sizeof(buffer) - 1) {
+        while (1) {
             ch = dsl_getc(reader);
             if (ch == EOF || ch == '\n') break;
-            if (ch != '\r') buffer[offset++] = (char)ch;
+            if (ch == '\r') continue;
+
+            if (len + 2 >= cap) {
+                cap = (len + 2) * 2;
+                char *nb = realloc(buf, cap);
+                if (!nb) { free(buf); return NULL; }
+                buf = nb;
+            }
+            buf[len++] = (char)ch;
         }
-
-        if (offset == 0 && ch == EOF) return NULL;
-
-        buffer[offset] = '\0';
-        return strdup(buffer);
     }
+
+    if (len == 0 && ch == EOF) {
+        free(buf);
+        return NULL;
+    }
+
+    buf[len] = '\0';
+    return buf;
 }
 
 static dsl_encoding detect_bom_from_bytes(const unsigned char *bom, size_t len, size_t *out_bom_size) {
@@ -268,33 +286,440 @@ static dsl_encoding detect_bom_from_bytes(const unsigned char *bom, size_t len, 
         if (bom[0] == 0 && bom[1] != 0) return DSL_ENCODING_UTF16BE;
     }
 
+    // No BOM and no 16-bit pattern: assume UTF-8
     return DSL_ENCODING_UTF8;
 }
 
-static char *clean_heading(const char *src) {
+// ============================================================
+// Heading cleanup
+// ============================================================
+
+void dsl_heading_cleanup(dsl_heading *h) {
+    if (!h) return;
+    if (h->keys) {
+        for (int i = 0; i < h->key_count; i++) free(h->keys[i]);
+        free(h->keys);
+    }
+    free(h->display);
+    h->keys = NULL;
+    h->key_count = 0;
+    h->display = NULL;
+}
+
+// ============================================================
+// Article cleanup helper
+// ============================================================
+
+static void dsl_article_cleanup(dsl_article *art) {
+    if (!art) return;
+    for (int i = 0; i < art->heading_count; i++)
+        dsl_heading_cleanup(&art->headings[i]);
+    free(art->headings);
+    art->headings = NULL;
+    art->heading_count = 0;
+    free(art->definition);
+    art->definition = NULL;
+    art->definition_length = 0;
+    for (int i = 0; i < art->sub_article_count; i++)
+        dsl_article_cleanup(&art->sub_articles[i]);
+    free(art->sub_articles);
+    art->sub_articles = NULL;
+    art->sub_article_count = 0;
+}
+
+// ============================================================
+// Heading parser (internal segment-based)
+// ============================================================
+
+typedef struct {
+    char *text;
+    bool optional;
+} dsl_segment;
+
+static char *dsl_generate_key(const dsl_segment *segs, int seg_count,
+                               int optional_count, int mask) {
+    size_t len = 1;
+    int opt_idx = 0;
+    for (int i = 0; i < seg_count; i++) {
+        bool include = segs[i].optional ? (mask & (1 << opt_idx++)) : true;
+        if (include && segs[i].text) len += strlen(segs[i].text);
+    }
+
+    char *result = malloc(len);
+    if (!result) return NULL;
+    result[0] = '\0';
+
+    opt_idx = 0;
+    for (int i = 0; i < seg_count; i++) {
+        bool include = segs[i].optional ? (mask & (1 << opt_idx++)) : true;
+        if (include && segs[i].text) strcat(result, segs[i].text);
+    }
+
+    return result;
+}
+
+static bool push_segment(dsl_segment **segs, int *count, int *cap,
+                          char *text_buf, size_t *text_len, bool optional) {
+    if (*text_len == 0) return true;
+    text_buf[*text_len] = '\0';
+    if (*count >= *cap) {
+        *cap *= 2;
+        dsl_segment *ns = realloc(*segs, (size_t)*cap * sizeof(dsl_segment));
+        if (!ns) return false;
+        *segs = ns;
+    }
+    char *text = strdup(text_buf);
+    if (!text) return false;
+    (*segs)[*count].text = text;
+    (*segs)[*count].optional = optional;
+    (*count)++;
+    *text_len = 0;
+    return true;
+}
+
+static dsl_heading dsl_parse_heading(const char *src) {
+    dsl_heading h = {0};
+    if (!src) return h;
+
     size_t len = strlen(src);
-    char *str = malloc(len + 1);
-    if (!str) return NULL;
-    int idx = 0;
-    int opened = 0;
+
+    // Internal segment array
+    int seg_count = 0;
+    int seg_cap = 8;
+    int optional_count = 0;
+    dsl_segment *segs = calloc(seg_cap, sizeof(dsl_segment));
+    if (!segs) return h;
+
+    size_t text_cap = len + 1;
+    char *text_buf = malloc(text_cap);
+    if (!text_buf) { free(segs); return h; }
+    size_t text_len = 0;
+
+    char *display = malloc(len + 1);
+    if (!display) { free(text_buf); free(segs); return h; }
+    size_t disp_len = 0;
+
+    enum { S_ROOT, S_BACKSLASH, S_PAREN, S_PAREN_BS, S_CURLY, S_CURLY_BS } state = S_ROOT;
 
     for (size_t i = 0; i < len; i++) {
-        if (src[i] == '{') {
-            opened = 1;
-        } else if (src[i] == '}') {
-            opened = 0;
-        } else if (!opened && src[i] != '\n' && src[i] != '\r') {
-            if (i > 0 && src[i-1] == '\\' && src[i-2] != '\\') {
-                str[idx-1] = src[i];
-            } else if (i == 1 && src[0] == '\\') {
-                str[idx-1] = src[i];
-            } else {
-                str[idx++] = src[i];
+        char c = src[i];
+        switch (state) {
+        case S_ROOT:
+            if (c == '\\') {
+                state = S_BACKSLASH;
+            } else if (c == '(') {
+                if (!push_segment(&segs, &seg_count, &seg_cap, text_buf, &text_len, false))
+                    goto fail;
+                optional_count++;
+                display[disp_len++] = '(';
+                state = S_PAREN;
+            } else if (c == '{') {
+                if (!push_segment(&segs, &seg_count, &seg_cap, text_buf, &text_len, false))
+                    goto fail;
+                state = S_CURLY;
+            } else if (c != '\n' && c != '\r') {
+                text_buf[text_len++] = c;
+                display[disp_len++] = c;
             }
+            break;
+        case S_BACKSLASH:
+            text_buf[text_len++] = c;
+            display[disp_len++] = c;
+            state = S_ROOT;
+            break;
+        case S_PAREN:
+            if (c == '\\') {
+                state = S_PAREN_BS;
+            } else if (c == ')') {
+                if (!push_segment(&segs, &seg_count, &seg_cap, text_buf, &text_len, true))
+                    goto fail;
+                display[disp_len++] = ')';
+                state = S_ROOT;
+            } else if (c != '\n' && c != '\r') {
+                text_buf[text_len++] = c;
+                display[disp_len++] = c;
+            }
+            break;
+        case S_PAREN_BS:
+            text_buf[text_len++] = c;
+            display[disp_len++] = c;
+            state = S_PAREN;
+            break;
+        case S_CURLY:
+            if (c == '\\') {
+                state = S_CURLY_BS;
+            } else if (c == '}') {
+                state = S_ROOT;
+            } else if (c != '\n' && c != '\r') {
+                display[disp_len++] = c;
+            }
+            break;
+        case S_CURLY_BS:
+            display[disp_len++] = c;
+            state = S_CURLY;
+            break;
         }
     }
-    str[idx] = '\0';
-    return str;
+
+    if (state != S_CURLY && state != S_CURLY_BS) {
+        if (!push_segment(&segs, &seg_count, &seg_cap, text_buf, &text_len, state == S_PAREN))
+            goto fail;
+    }
+    display[disp_len] = '\0';
+
+    free(text_buf);
+
+    // Trim display trailing whitespace
+    while (disp_len > 0 && (display[disp_len - 1] == ' ' || display[disp_len - 1] == '\t')) {
+        display[--disp_len] = '\0';
+    }
+
+    // Generate all 2^N keys. keys[0] = primary (all optional included, mask = all 1s).
+    int num_masks = 1 << optional_count;
+    int key_cap = num_masks;
+    h.keys = calloc(key_cap, sizeof(char *));
+    if (!h.keys) goto fail;
+
+    // Primary key first (mask = all 1s), then the rest
+    for (int i = 0; i < num_masks; i++) {
+        int mask = (num_masks - 1) - i;
+        char *key = dsl_generate_key(segs, seg_count, optional_count, mask);
+        if (!key) goto fail;
+        if (key[0] != '\0') {
+            h.keys[h.key_count++] = key;
+        } else {
+            free(key);
+        }
+    }
+
+    h.display = disp_len > 0 ? display : (free(display), NULL);
+
+    // Free internal segments
+    for (int i = 0; i < seg_count; i++) free(segs[i].text);
+    free(segs);
+
+    return h;
+
+fail:
+    free(text_buf);
+    for (int i = 0; i < seg_count; i++) free(segs[i].text);
+    free(segs);
+    free(display);
+    dsl_heading_cleanup(&h);
+    return h;
+}
+
+// ============================================================
+// Sub-article (@) scanner
+// ============================================================
+
+typedef enum {
+    DSL_SUB_LINE_NONE,     // regular body line
+    DSL_SUB_LINE_CLOSE,    // standalone "@"
+    DSL_SUB_LINE_OPEN,     // "@ heading"
+} dsl_sub_line_type;
+
+static dsl_sub_line_type dsl_classify_sub_line(const char *stripped, const char **heading_out) {
+    if (stripped[0] != '@') return DSL_SUB_LINE_NONE;
+    if (stripped[1] == '\0') return DSL_SUB_LINE_CLOSE;
+    if (stripped[1] == ' ' || stripped[1] == '\t') {
+        if (heading_out) {
+            const char *p = stripped + 2;
+            while (*p == ' ' || *p == '\t') p++;
+            *heading_out = p;
+        }
+        return DSL_SUB_LINE_OPEN;
+    }
+    return DSL_SUB_LINE_NONE;
+}
+
+// Finish current sub-article: expand array, parse heading, fill struct, append [ref].
+// On success: heading_raw is freed, sub_def ownership transferred, returns 0.
+// On failure: returns -1, caller must free heading_raw and sub_def via goto fail.
+static int finish_sub_article(
+    dsl_article *parent,
+    char **heading_raw,
+    char **def, size_t *def_cap, size_t *def_len,
+    char **main_buf, size_t *main_len, size_t *main_cap,
+    int *cap, int found)
+{
+    if (found >= *cap) {
+        *cap = *cap == 0 ? 4 : *cap * 2;
+        dsl_article *ns = realloc(parent->sub_articles, *cap * sizeof(dsl_article));
+        if (!ns) return -1;
+        parent->sub_articles = ns;
+    }
+
+    dsl_article *sa = &parent->sub_articles[found];
+    memset(sa, 0, sizeof(*sa));
+
+    dsl_heading h = dsl_parse_heading(*heading_raw);
+    if (!h.keys) return -1;
+
+    sa->headings = calloc(1, sizeof(dsl_heading));
+    if (!sa->headings) { dsl_heading_cleanup(&h); return -1; }
+    sa->headings[0] = h;
+    sa->heading_count = 1;
+    sa->definition = *def;
+    sa->definition_length = *def_len;
+
+    // Append [ref] to main buffer
+    const char *ref_key = h.keys[0];
+    size_t ref_key_len = strlen(ref_key);
+    size_t need = 18 + ref_key_len;
+    if (*main_len + need >= *main_cap) {
+        *main_cap = (*main_len + need + 1) * 2;
+        char *np = realloc(*main_buf, *main_cap);
+        if (!np) return -1;
+        *main_buf = np;
+    }
+    memcpy(*main_buf + *main_len, "\t[m2][ref]", 10);
+    *main_len += 10;
+    memcpy(*main_buf + *main_len, ref_key, ref_key_len);
+    *main_len += ref_key_len;
+    memcpy(*main_buf + *main_len, "[/ref][/m]\n", 11);
+    *main_len += 11;
+
+    free(*heading_raw);
+    *heading_raw = NULL;
+    *def = NULL;
+    *def_cap = 0;
+    *def_len = 0;
+
+    return 0;
+}
+
+// Scan definition body for @ sub-entries.
+// - Splits into main_def (with [ref] links) and sub-articles.
+// - Caller must free *out_main_def.
+// - sub_articles are stored in parent->sub_articles.
+// Returns number of sub-articles found, or -1 on error.
+static int dsl_scan_sub_articles(dsl_article *parent,
+                                  const char *def_buf,
+                                  char **out_parent_def) {
+    if (!def_buf || def_buf[0] == '\0') {
+        *out_parent_def = NULL;
+        return 0;
+    }
+
+    size_t def_len = strlen(def_buf);
+
+    size_t parent_cap = def_len + 1;
+    char *parent_buf = malloc(parent_cap);
+    if (!parent_buf) return -1;
+    size_t parent_len = 0;
+
+    int sub_cap = 0;
+    int found = 0;
+
+    char *sub_heading_raw = NULL;
+    char *sub_def = NULL;
+    size_t sub_def_cap = 0;
+    size_t sub_def_len = 0;
+    bool in_sub = false;
+
+    // Iterate lines in def_buf
+    size_t pos = 0;
+    while (pos < def_len) {
+        size_t eol = pos;
+        while (eol < def_len && def_buf[eol] != '\n') eol++;
+
+        size_t line_len = eol - pos;
+
+        size_t content_len = line_len;
+        if (content_len > 0 && def_buf[pos + content_len - 1] == '\r')
+            content_len--;
+
+        size_t start = pos;
+        while (start < pos + content_len && (def_buf[start] == ' ' || def_buf[start] == '\t'))
+            start++;
+        size_t stripped_len = (pos + content_len) - start;
+
+        char *stripped = malloc(stripped_len + 1);
+        if (!stripped) goto fail;
+        memcpy(stripped, def_buf + start, stripped_len);
+        stripped[stripped_len] = '\0';
+
+        const char *heading_text = NULL;
+        dsl_sub_line_type cls = dsl_classify_sub_line(stripped, &heading_text);
+
+        if (cls == DSL_SUB_LINE_CLOSE) {
+            if (in_sub) {
+                if (finish_sub_article(parent, &sub_heading_raw,
+                        &sub_def, &sub_def_cap, &sub_def_len,
+                        &parent_buf, &parent_len, &parent_cap, &sub_cap, found) < 0) {
+                    free(stripped); goto fail;
+                }
+                found++;
+                in_sub = false;
+            }
+            free(stripped);
+        } else if (cls == DSL_SUB_LINE_OPEN) {
+            if (in_sub) {
+                if (finish_sub_article(parent, &sub_heading_raw,
+                        &sub_def, &sub_def_cap, &sub_def_len,
+                        &parent_buf, &parent_len, &parent_cap, &sub_cap, found) < 0) {
+                    free(stripped); goto fail;
+                }
+                found++;
+            }
+            sub_heading_raw = strdup(heading_text);
+            in_sub = true;
+            free(stripped);
+            if (!sub_heading_raw) goto fail;
+        } else {
+            if (in_sub) {
+                size_t need = content_len + 1;
+                if (sub_def_len + need >= sub_def_cap) {
+                    sub_def_cap = (sub_def_len + need + 1) * 2;
+                    char *ns = realloc(sub_def, sub_def_cap);
+                    if (!ns) { free(stripped); goto fail; }
+                    sub_def = ns;
+                }
+                memcpy(sub_def + sub_def_len, def_buf + pos, content_len);
+                sub_def_len += content_len;
+                sub_def[sub_def_len++] = '\n';
+            } else {
+                if (parent_len + content_len + 1 >= parent_cap) {
+                    parent_cap = (parent_len + content_len + 2) * 2;
+                    char *np = realloc(parent_buf, parent_cap);
+                    if (!np) { free(stripped); goto fail; }
+                    parent_buf = np;
+                }
+                memcpy(parent_buf + parent_len, def_buf + pos, content_len);
+                parent_len += content_len;
+                parent_buf[parent_len++] = '\n';
+            }
+            free(stripped);
+        }
+
+        pos = (eol < def_len) ? eol + 1 : eol;
+    }
+
+    if (in_sub) {
+        if (finish_sub_article(parent, &sub_heading_raw,
+                &sub_def, &sub_def_cap, &sub_def_len,
+                &parent_buf, &parent_len, &parent_cap, &sub_cap, found) < 0) {
+            goto fail;
+        }
+        found++;
+    }
+
+    parent_buf[parent_len] = '\0';
+    *out_parent_def = parent_buf;
+    parent->sub_article_count = found;
+    return found;
+
+fail:
+    free(parent_buf);
+    free(sub_def);
+    free(sub_heading_raw);
+    for (int i = 0; i < found; i++)
+        dsl_article_cleanup(&parent->sub_articles[i]);
+    free(parent->sub_articles);
+    parent->sub_articles = NULL;
+    parent->sub_article_count = 0;
+    return -1;
 }
 
 // ============================================================
@@ -310,7 +735,11 @@ lsd_status dsl_reader_open(const char *filename, dsl_reader **out_reader) {
     dsl_reader *reader = calloc(1, sizeof(dsl_reader));
     if (!reader) return LSD_ERR_MEMORY;
 
-    reader->filename = filename;
+    reader->filename = strdup(filename);
+    if (!reader->filename) {
+        free(reader);
+        return LSD_ERR_MEMORY;
+    }
     reader->is_dz = is_dz;
 
     if (is_dz) {
@@ -398,6 +827,11 @@ lsd_status dsl_reader_open(const char *filename, dsl_reader **out_reader) {
                 reader->header.index_language = strdup(value);
             else if (strcmp(key, "CONTENTS_LANGUAGE") == 0)
                 reader->header.contents_language = strdup(value);
+            else if (strcmp(key, "INCLUDE") == 0) {
+                free(line);
+                dsl_reader_close(reader);
+                return LSD_ERR_FORMAT;
+            }
         }
 
         free(line);
@@ -418,6 +852,7 @@ void dsl_reader_close(dsl_reader *reader) {
     if (reader->dz) dictzip_close(reader->dz);
     free(reader->read_buffer);
     free(reader->pending_line);
+    free(reader->filename);
     free(reader->header.name);
     free(reader->header.index_language);
     free(reader->header.contents_language);
@@ -475,8 +910,7 @@ dsl_article_iter *dsl_article_iter_create(dsl_reader *reader) {
 
 void dsl_article_iter_destroy(dsl_article_iter *iter) {
     if (!iter) return;
-    free(iter->current.heading);
-    free(iter->current.definition);
+    dsl_article_cleanup(&iter->current);
     free(iter->peek_line);
     free(iter);
 }
@@ -486,13 +920,15 @@ lsd_status dsl_article_iter_next(dsl_article_iter *iter, const dsl_article **out
 
     dsl_reader *reader = iter->reader;
 
-    // Free previous article data
-    free(iter->current.heading);
-    iter->current.heading = NULL;
-    free(iter->current.definition);
-    iter->current.definition = NULL;
+    // Free previous current data
+    dsl_article_cleanup(&iter->current);
 
-    // --- Read heading ---
+    // --- Collect heading lines ---
+
+    int hline_cap = 4;
+    int hline_count = 0;
+    char **hlines = malloc(hline_cap * sizeof(char *));
+    if (!hlines) return LSD_ERR_MEMORY;
 
     char *line = iter->peek_line;
     iter->peek_line = NULL;
@@ -507,18 +943,61 @@ lsd_status dsl_article_iter_next(dsl_article_iter *iter, const dsl_article **out
     }
 
     if (!line) {
+        free(hlines);
         *out_article = NULL;
         return LSD_DONE;
     }
 
-    char *heading = clean_heading(line);
-    free(line);
-    if (!heading) return LSD_ERR_MEMORY;
+    hlines[hline_count++] = line;
 
-    size_t heading_len = strlen(heading);
+    // Read additional heading lines
+    while ((line = dsl_read_line(reader)) != NULL) {
+        size_t len = strlen(line);
+        if (len == 0) { free(line); continue; }
+        if (line[0] == ' ' || line[0] == '\t') {
+            iter->peek_line = line;
+            break;
+        }
+        if (line[0] == '#') { free(line); continue; }
+        if (hline_count >= hline_cap) {
+            hline_cap *= 2;
+            char **new_hl = realloc(hlines, hline_cap * sizeof(char *));
+            if (!new_hl) {
+                for (int i = 0; i < hline_count; i++) free(hlines[i]);
+                free(hlines);
+                return LSD_ERR_MEMORY;
+            }
+            hlines = new_hl;
+        }
+        hlines[hline_count++] = line;
+    }
+
+    // --- Parse headings ---
+
+    dsl_heading *headings = calloc(hline_count, sizeof(dsl_heading));
+    if (!headings) {
+        for (int i = 0; i < hline_count; i++) free(hlines[i]);
+        free(hlines);
+        return LSD_ERR_MEMORY;
+    }
+
+    bool parse_ok = true;
+    for (int i = 0; i < hline_count; i++) {
+        headings[i] = dsl_parse_heading(hlines[i]);
+        free(hlines[i]);
+        if (!headings[i].keys) { parse_ok = false; break; }
+    }
+    free(hlines);
+
+    if (!parse_ok) {
+        for (int i = 0; i < hline_count; i++) dsl_heading_cleanup(&headings[i]);
+        free(headings);
+        return LSD_ERR_MEMORY;
+    }
+
     size_t article_offset = 0;
     if (!reader->is_dz && reader->file) {
-        article_offset = (size_t)lsd_ftell(reader->file) - heading_len;
+        article_offset = (size_t)lsd_ftell(reader->file);
     } else {
         article_offset = reader->current_offset;
     }
@@ -528,25 +1007,51 @@ lsd_status dsl_article_iter_next(dsl_article_iter *iter, const dsl_article **out
     size_t def_cap = 4096;
     size_t def_len = 0;
     char *def_buf = malloc(def_cap);
-    if (!def_buf) { free(heading); return LSD_ERR_MEMORY; }
+    if (!def_buf) {
+        for (int i = 0; i < hline_count; i++) dsl_heading_cleanup(&headings[i]);
+        free(headings);
+        return LSD_ERR_MEMORY;
+    }
     def_buf[0] = '\0';
 
-    while ((line = dsl_read_line(reader)) != NULL) {
+    line = iter->peek_line;
+    iter->peek_line = NULL;
+
+    if (line) {
         size_t len = strlen(line);
-
-        // Next heading encountered
-        if (len > 0 && line[0] != ' ' && line[0] != '\t') {
-            iter->peek_line = line; // saved for next iteration
-            break;
-        }
-
-        // Grow buffer if needed
         if (def_len + len + 2 >= def_cap) {
             def_cap = (def_len + len + 2) * 2;
             char *new_buf = realloc(def_buf, def_cap);
             if (!new_buf) {
                 free(def_buf);
-                free(heading);
+                for (int i = 0; i < hline_count; i++) dsl_heading_cleanup(&headings[i]);
+                free(headings);
+                free(line);
+                return LSD_ERR_MEMORY;
+            }
+            def_buf = new_buf;
+        }
+        memcpy(def_buf + def_len, line, len);
+        def_len += len;
+        def_buf[def_len++] = '\n';
+        free(line);
+    }
+
+    while ((line = dsl_read_line(reader)) != NULL) {
+        size_t len = strlen(line);
+
+        if (len > 0 && line[0] != ' ' && line[0] != '\t') {
+            iter->peek_line = line;
+            break;
+        }
+
+        if (def_len + len + 2 >= def_cap) {
+            def_cap = (def_len + len + 2) * 2;
+            char *new_buf = realloc(def_buf, def_cap);
+            if (!new_buf) {
+                free(def_buf);
+                for (int i = 0; i < hline_count; i++) dsl_heading_cleanup(&headings[i]);
+                free(headings);
                 free(line);
                 return LSD_ERR_MEMORY;
             }
@@ -561,12 +1066,24 @@ lsd_status dsl_article_iter_next(dsl_article_iter *iter, const dsl_article **out
 
     def_buf[def_len] = '\0';
 
-    // Fill article
-    iter->current.heading = heading;
-    iter->current.heading_length = heading_len;
-    iter->current.definition = def_buf;
-    iter->current.definition_length = def_len;
+    // --- Scan for @ sub-entries ---
+
+    char *parent_def = NULL;
+    int sub_count = dsl_scan_sub_articles(&iter->current, def_buf, &parent_def);
+
+    iter->current.headings = headings;
+    iter->current.heading_count = hline_count;
     iter->current.definition_offset = article_offset;
+
+    if (sub_count > 0 && parent_def) {
+        free(def_buf);
+        iter->current.definition = parent_def;
+        iter->current.definition_length = strlen(parent_def);
+    } else {
+        free(parent_def);
+        iter->current.definition = def_buf;
+        iter->current.definition_length = def_len;
+    }
 
     *out_article = &iter->current;
     return LSD_OK;

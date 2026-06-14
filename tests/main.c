@@ -48,13 +48,6 @@ static void print_first_n_entries(const char *path, int n) {
     printf("Entries:    %u\n", hdr->entries_count);
     printf("\n--- First %d entries ---\n\n", n);
 
-    uint8_t *odata = NULL;
-    size_t osize;
-    lsd_reader_read_overlay(reader, "for_sale_2.jpg", &odata, &osize);
-    FILE *fp = fopen("/Users/kejinlu/Desktop/tttt.jpg", "wb");
-    fwrite(odata, 1, osize, fp);
-    fclose(fp);
-
     // 使用迭代器遍历并打印前 n 个词条
     lsd_heading_iter *it = lsd_heading_iter_create(reader);
     const lsd_heading *h;
@@ -105,52 +98,6 @@ static void test_lsa_reader(const char *path) {
     for (size_t i = 0; i < count && i < 10; i++) {
         const char *name = lsa_reader_get_entry_name(lsa, i);
         printf("%4zu. %s\n", i + 1, name ? name : "(null)");
-    }
-
-    // 导出前两条音频到桌面
-    printf("\n--- Decode & Export ---\n\n");
-    for (size_t i = 0; i < 2 && i < count; i++) {
-        int16_t *pcm = NULL;
-        size_t size = 0;
-        int rate = 0, ch = 0;
-
-        if (lsa_reader_decode(lsa, i, &pcm, &size, &rate, &ch)) {
-            char out_path[256];
-            snprintf(out_path, sizeof(out_path),
-                     "/Users/kejinlu/Desktop/lsa_entry%zu.wav", i + 1);
-
-            // 手动写 WAV
-            FILE *fp = fopen(out_path, "wb");
-            if (fp && size > 0) {
-                // WAV header
-                uint32_t data_size = (uint32_t)size;
-                uint32_t riff_size = 36 + data_size;
-                uint16_t fmt = 1, bits = 16, nch = (uint16_t)ch;
-                uint32_t sr = (uint32_t)rate;
-                uint16_t block_align = nch * 2;
-                uint32_t byte_rate = sr * block_align;
-                fwrite("RIFF", 1, 4, fp);
-                fwrite(&riff_size, 4, 1, fp);
-                fwrite("WAVEfmt ", 1, 8, fp);
-                uint32_t fmt_size = 16;
-                fwrite(&fmt_size, 4, 1, fp);
-                fwrite(&fmt, 2, 1, fp);
-                fwrite(&nch, 2, 1, fp);
-                fwrite(&sr, 4, 1, fp);
-                fwrite(&byte_rate, 4, 1, fp);
-                fwrite(&block_align, 2, 1, fp);
-                fwrite(&bits, 2, 1, fp);
-                fwrite("data", 1, 4, fp);
-                fwrite(&data_size, 4, 1, fp);
-                fwrite(pcm, 1, size, fp);
-                fclose(fp);
-                printf("Saved: %s (%dHz, %dch, %zu bytes)\n",
-                       out_path, rate, ch, size);
-            }
-            free(pcm);
-        } else {
-            printf("Decode failed: entry %zu\n", i);
-        }
     }
 
     lsa_reader_close(lsa);

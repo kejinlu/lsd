@@ -30,7 +30,7 @@ typedef struct lsa_entry lsa_entry;
 
 struct lsa_reader {
     FILE *file;
-    const char *filename;
+    char *filename;
 
     lsa_entry *entries;
     size_t entry_count;
@@ -172,7 +172,12 @@ lsa_reader *lsa_reader_open(const char *filename) {
     }
 
     reader->file = file;
-    reader->filename = filename;
+    reader->filename = strdup(filename);
+    if (!reader->filename) {
+        fclose(file);
+        free(reader);
+        return NULL;
+    }
 
     // Get file size
     lsd_fseek(file, 0, SEEK_END);
@@ -290,6 +295,7 @@ void lsa_reader_close(lsa_reader *reader) {
         fclose(reader->file);
     }
 
+    free(reader->filename);
     free(reader);
 }
 

@@ -41,15 +41,34 @@ typedef struct dsl_header {
 } dsl_header;
 
 // ============================================================
+// DSL heading (parsed from DSL markup)
+// ============================================================
+
+// Parsed heading: pre-generated search keys + display title.
+// keys[0] is the primary key (all optional parts included).
+// For "hono(u)r": keys=["honour","honr"], display="hono(u)r"
+// For "a(b)c(d)e": keys=["abcde","ace","abce","acde"], display="a(b)c(d)e"
+typedef struct {
+    char **keys;      // search key strings (owned array + owned strings)
+    int key_count;    // number of keys
+    char *display;    // display title: keeps () brackets, removes {} brackets but keeps content
+} dsl_heading;
+
+// Release heading resources.
+void dsl_heading_cleanup(dsl_heading *h);
+
+// ============================================================
 // DSL article
 // ============================================================
 
 typedef struct dsl_article {
-    char *heading;           // Article heading
-    size_t heading_length;   // Heading length
-    char *definition;        // Article definition
-    size_t definition_length;// Definition length
-    size_t definition_offset;// Definition start position in the file
+    dsl_heading *headings;       // Array of parsed headings (multiple heading lines)
+    int heading_count;           // Number of headings
+    char *definition;            // Article definition
+    size_t definition_length;    // Definition length
+    size_t definition_offset;    // Definition start position in the file
+    struct dsl_article *sub_articles; // @ sub-entries extracted from body
+    int sub_article_count;       // Number of sub-articles (always flat, no nesting)
 } dsl_article;
 
 // ============================================================
