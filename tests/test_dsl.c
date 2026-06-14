@@ -180,8 +180,7 @@ void test_dsl_ipa_encoding_name(void) {
 }
 
 void test_dsl_ipa_iter_first3(void) {
-    dsl_reader *r;
-    dsl_reader_open("/Users/kejinlu/Downloads/華英字典/Huayingzidian(Zh-En)-sinica.edu.tw.dsl", &r);//dsl_open_assert("en_us_ipa.dsl.dz");
+    dsl_reader *r = dsl_open_assert("en_us_ipa.dsl.dz");
     dsl_article_iter *iter = dsl_article_iter_create(r);
     const dsl_article *art = NULL;
 
