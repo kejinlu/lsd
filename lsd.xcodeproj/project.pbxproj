@@ -46,6 +46,7 @@
 		692F1D552F91DC900037745D /* dictzip.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = dictzip.xcodeproj; sourceTree = "<group>"; };
 		69895FB32FC69F9A00D4E83D /* dictzip.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = dictzip.xcodeproj; sourceTree = "<group>"; };
 		69897B062FDD3EC100D4E83D /* dictzip.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = dictzip.xcodeproj; sourceTree = "<group>"; };
+		6989A11B2FDED1DF00D4E83D /* dictzip.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = dictzip.xcodeproj; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -183,6 +184,13 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
+		6989A11E2FDED1DF00D4E83D /* Products */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXHeadersBuildPhase section */
@@ -271,6 +279,10 @@
 			productRefGroup = 692F15492F89398D0037745D /* Products */;
 			projectDirPath = "";
 			projectReferences = (
+				{
+					ProductGroup = 6989A11E2FDED1DF00D4E83D /* Products */;
+					ProjectRef = 6989A11B2FDED1DF00D4E83D /* dictzip.xcodeproj */;
+				},
 				{
 					ProductGroup = 692F1D592F91DC900037745D /* Products */;
 					ProjectRef = 692F1D552F91DC900037745D /* dictzip.xcodeproj */;

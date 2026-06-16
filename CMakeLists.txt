@@ -17,7 +17,9 @@ find_package(Unistring REQUIRED)
 
 # dictzip (submodule)
 set(DICTZIP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-add_subdirectory(deps/dictzip)
+if(NOT TARGET dictzip)
+    add_subdirectory(deps/dictzip)
+endif()
 
 # ---------- Library ----------
 file(GLOB LSD_SOURCES src/*.c)
